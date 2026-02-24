@@ -192,7 +192,7 @@ class Operator(OperatorLike):
     ) -> Operator:
         """
         Compute partial trace of an operator over all subsystems
-        except those listed in `keep`.
+        except those listed in `reduce_to_sites`, including reordering of the subsystems to match the ordering of reduce_to_sites.
 
         Parameters
         ----------
@@ -200,7 +200,7 @@ class Operator(OperatorLike):
             Square matrix of shape (D, D).
         dims : sequence of int
             Hilbert space dimensions of each subsystem.
-        keep : iterable of int
+        reduce_to_sites : iterable of int
             Indices of subsystems to retain.
 
         Returns
@@ -210,7 +210,7 @@ class Operator(OperatorLike):
         """
 
         dims = tuple(dims)
-        keep = tuple(sorted(reduce_to_sites))
+        keep = reduce_to_sites
         op = self.matrix
         n = len(dims)
 

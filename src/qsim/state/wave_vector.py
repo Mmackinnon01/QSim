@@ -73,12 +73,19 @@ class WaveVector(ABC):
     def dim(self) -> int:
         return self.state.shape[0]
 
+    def tensor(self, other: Self) -> Self:
+        if not isinstance(other, type(self)):
+            raise TypeError(
+                f"Tensor product of type {type(self)} with type {type(other)} is not possible"
+            )
+        return type(self)(np.kron(self.state, other.state))
+
     def partialTrace(
         self, dims: tuple[int, ...], reduce_to_sites: tuple[int, ...]
     ) -> DensityMatrix:
         """
         Compute reduced density matrix from a pure state vector
-        without constructing the full density matrix.
+        without constructing the full density matrix. Resulting density matrix will match the ordering or reduce_to_sites
 
         Parameters
         ----------
@@ -86,7 +93,7 @@ class WaveVector(ABC):
             State vector of shape (D,)
         dims : sequence[int]
             Hilbert space dimensions
-        keep : iterable[int]
+        reduce_to_sites : iterable[int]
             Subsystems to retain
 
         Returns
@@ -96,7 +103,7 @@ class WaveVector(ABC):
         """
 
         dims = tuple(dims)
-        keep = tuple(sorted(reduce_to_sites))
+        keep = tuple(reduce_to_sites)
         psi = self.state
         n = len(dims)
 

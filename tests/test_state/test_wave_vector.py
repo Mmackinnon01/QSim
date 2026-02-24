@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from qsim.state import Bra, DensityMatrix, Ket
+from qsim.state.wave_vector import WaveVector
 
 
 @pytest.fixture
@@ -66,4 +67,28 @@ def test_normalisation(bell_wave_vector):
 def test_partial_trace(bell_wave_vector):
     assert pytest.approx(bell_wave_vector.partialTrace((2, 2), (1,)).state) == np.array(
         [[0.5, 0], [0, 0.5]]
+    )
+
+
+def test_tensor():
+    b = Ket(np.array([0, 1]))
+    c = Ket(np.array([1, 1]) / 2**0.5)
+
+    assert pytest.approx(b.tensor(c).state) == np.array([0, 0, 1, 1]) / 2**0.5
+
+
+def test_tensor_ket_bra_incompatible():
+    with pytest.raises(TypeError):
+        a = Bra(np.array([1, 0]))
+        b = Ket(np.array([1, 0]))
+        a.tensor(b)
+
+
+def test_partial_trace(bell_wave_vector):
+    a = Ket(np.array([1, 0]))
+    b = Ket(np.array([0, 1]))
+    c = Ket(np.array([1, 1]) / 2**0.5)
+    assert (
+        pytest.approx(a.tensor(b).tensor(c).partialTrace((2, 2, 2), (1, 0)).state)
+        == (b @ b.hConj()).tensor(a @ a.hConj()).state
     )

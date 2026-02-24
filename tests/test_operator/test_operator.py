@@ -116,3 +116,13 @@ def test_callable_returns_self():
 def test_callable_returns_value_error_if_not_float():
     with pytest.raises(TypeError):
         pauliZ("3")
+
+
+def test_partial_trace_reorder():
+    a = Operator(np.array([[1, 0], [0, 0]]))
+    b = Operator(np.array([[0, 0], [0, 1]]))
+    c = Operator(np.array([[0.5, 0], [0, 0.5]]))
+    assert (
+        pytest.approx(a.tensor(b).tensor(c).partialTrace((2, 2, 2), (1, 0)).matrix)
+        == b.tensor(a).matrix
+    )
