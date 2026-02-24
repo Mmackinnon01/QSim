@@ -5,6 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "qsim"
 version = "1.0.0"
+description = "Quantum simulator module for open and closed system dynamics"
+authors = [{name="Matthew Mackinnon"}]
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10"
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
