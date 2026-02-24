@@ -47,7 +47,9 @@ class Dynamics:
         self._prop = propagator
         self._gen = generator
         if callbacks is not None:
-            if not isinstance(callbacks, list) or not callable(callbacks[0]):
+            if not isinstance(callbacks, list) or any(
+                [not callable(callback) for callback in callbacks]
+            ):
                 raise TypeError(
                     f"Callbacks must be a list of type callable, not {type(callbacks)}"
                 )
@@ -61,7 +63,7 @@ class Dynamics:
                 self._callbacks.append(callback)
         else:
             raise TypeError(
-                f"Callbacks must be a list of type callable, not {type(callbacks)}"
+                f"Callbacks must be a list of type callable, not {type(callback)}"
             )
 
     def evolve(self, state: QuantumState, ts: list[Real], t0: Real = 0) -> QuantumState:
@@ -81,21 +83,14 @@ class Dynamics:
         QuantumState
             The final evolved quantum state at t_final = max(ts).
         """
-        if not isinstance(ts, list):
-            raise TypeError(f"Ts must be a list of evolution times, not {type(ts)}")
         if min(ts) < t0:
             raise ValueError(f"Evolution time {min(ts)} is less than initial time {t0}")
 
-        for t in sorted(ts):
-            state = self._prop.evolve(self._gen, state, t - t0, t0)
-            t0 = t
-            self._callback(state, t)
-
-        return state
+        return self._evolveObject(self._prop.evolve, state, sorted(ts), t0)
 
     def evolveOperator(self, op: Operator, ts: list[Real], t0: Real = 0) -> Operator:
         """
-        Evolve an operator in time from `t0` to `t0-t`.
+        Evolve an operator in time from `t0` to `ts`. Each ts must be smaller than t0, as Heisenberg evolution works back in time
 
         Parameters
         ----------
@@ -110,20 +105,23 @@ class Dynamics:
         Operator
             The time-evolved operator.
         """
+        if max(ts) > t0:
+            raise ValueError(f"Evolution time {max(ts)} is more than initial time {t0}")
 
+        return self._evolveObject(
+            self._prop.evolveOperator, op, sorted(ts, reverse=True), t0
+        )
+
+    def _evolveObject(self, prop_func, obj, ts, t0):
         if not isinstance(ts, list):
             raise TypeError(f"Ts must be a list of evolution times, not {type(ts)}")
-        if max(ts) > t0:
-            raise ValueError(
-                f"Evolution time {max(ts)} is greater than initial time {t0}"
-            )
 
-        for t in sorted(ts, reverse=True):
-            op = self._prop.evolveOperator(self._gen, op, t0 - t, t0)
+        for t in ts:
+            obj = prop_func(self._gen, obj, t, t0)
             t0 = t
-            self._callback(op, t)
+            self._callback(obj, t)
 
-        return op
+        return obj
 
     def _callback(self, op: Any, t: Real) -> None:
         if self._callbacks is not None:

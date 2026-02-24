@@ -90,7 +90,7 @@ class GKSLGenerator(Generator):
     def onOperator(self, op: Operator, t: Real = 0) -> Operator:
         H, jumps, hJumps, ac_components = self._evaluateOperators(t)
         unitary_component = 1j * (H @ op - op @ H)
-        if len(jumps) == 0:
+        if not jumps:
             return unitary_component
         dissipative_component = reduce(
             lambda x, y: x + y,
@@ -104,7 +104,7 @@ class GKSLGenerator(Generator):
     def visitDensityMatrix(self, rho: DensityMatrix, t: Real) -> DensityMatrix:
         H, jumps, hJumps, ac_components = self._evaluateOperators(t)
         unitary_component = -1j * (H @ rho - rho @ H)
-        if len(self.jumps) == 0:
+        if not jumps:
             return unitary_component
         dissipative_component = reduce(
             lambda x, y: x + y,
@@ -113,7 +113,7 @@ class GKSLGenerator(Generator):
                 for L, L_dag, L2 in zip(jumps, hJumps, ac_components)
             ],
         )
-        return (unitary_component + dissipative_component)(t)
+        return unitary_component + dissipative_component
 
     def visitBra(self, psi: Bra, t: float) -> TypeError:
         raise TypeError("GKSL master equation not valid for wavevector input")

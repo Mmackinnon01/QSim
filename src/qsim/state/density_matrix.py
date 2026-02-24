@@ -13,7 +13,7 @@ from qsim.operator.base import OperatorLike
 from .base import QuantumState, R, StateVisitor
 
 
-class DensityMatrix(QuantumState, OperatorLike):
+class DensityMatrix(QuantumState):
 
     def __init__(self, state: np.ndarray | Operator) -> None:
         if isinstance(state, np.ndarray):

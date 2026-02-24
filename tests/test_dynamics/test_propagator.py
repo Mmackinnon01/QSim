@@ -25,14 +25,16 @@ propagator = RK4Propagator()
 
 def test_evolve_dm():
     assert pytest.approx(
-        propagator.evolve(unitary_dynamic, spin_down, t=PI / 2).matrix
+        propagator.evolve(unitary_dynamic, spin_down, t_final=PI / 2).matrix
     ) == np.array([[0, 0], [0, 1]])
 
 
 def test_evolve_observable():
     assert (
         pytest.approx(
-            propagator.evolveOperator(unitary_dynamic, zObservable, t=PI / 2).matrix
+            propagator.evolveOperator(
+                unitary_dynamic, zObservable, t_final=0, t0=PI / 2
+            ).matrix
         )
         == -zObservable.matrix
     )
@@ -62,27 +64,31 @@ PI = math.pi
 
 def test_evolve_density_matrix():
     evolved_state = exponential_propagator.evolve(
-        xSpinGenerator, spinUpDensityMatrix, t=PI / 2
+        xSpinGenerator, spinUpDensityMatrix, t_final=PI / 2
     )
     assert pytest.approx(evolved_state.state) == spinDownDensityMatrix.state
     assert isinstance(evolved_state, DensityMatrix)
 
 
 def test_evolve_ket():
-    evolved_state = exponential_propagator.evolve(xSpinGenerator, spinUpKet, t=PI / 2)
+    evolved_state = exponential_propagator.evolve(
+        xSpinGenerator, spinUpKet, t_final=PI / 2
+    )
     assert pytest.approx(evolved_state.state) == (-1j * spinDownKet).state
     assert isinstance(evolved_state, Ket)
 
 
 def test_evolve_bra():
-    evolved_state = exponential_propagator.evolve(xSpinGenerator, spinUpBra, t=PI / 2)
+    evolved_state = exponential_propagator.evolve(
+        xSpinGenerator, spinUpBra, t_final=PI / 2
+    )
     assert pytest.approx(evolved_state.state) == (1j * spinDownBra).state
     assert isinstance(evolved_state, Bra)
 
 
 def test_evolve_operator():
     evolved_observable = exponential_propagator.evolveOperator(
-        xSpinGenerator, zObservable, t=PI / 2
+        xSpinGenerator, zObservable, t_final=PI / 2
     )
     assert pytest.approx(evolved_observable.matrix) == (-1 * zObservable).matrix
     assert isinstance(evolved_observable, Operator)

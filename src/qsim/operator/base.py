@@ -154,54 +154,38 @@ class Operator(OperatorLike):
             Dimensions of subsystems the operator acts on. Defaults to (self.dim,) if None
         """
 
-        if not base_dims:
-            base_dims = (self.dim,)
+        A = self.matrix
+        if base_dims is None:
+            base_dims = (A.shape[0],)
 
-        if len(base_dims) != len(send_to_sites):
-            raise ValueError("old_dims and send_to_sites must have same length")
-
-        if any(site >= len(new_dims) or site < 0 for site in send_to_sites):
-            raise ValueError("send_to_sites contains invalid index")
-
-        if len(set(send_to_sites)) != len(send_to_sites):
-            raise ValueError("send_to_sites contains duplicate index")
-
-        # Check dimension compatibility
-        for old_dim, site in zip(base_dims, send_to_sites):
-            if new_dims[site] != old_dim:
-                raise ValueError(
-                    f"Dimension mismatch at site {site}: "
-                    f"{new_dims[site]} != {old_dim}"
-                )
-
+        targets = tuple(send_to_sites)
         N = len(new_dims)
+        k = len(targets)
 
-        # --- Step 1: reshape operator into tensor form ---
-        # shape: (d0,...,dk-1, d0,...,dk-1)
-        op_tensor = self.matrix.reshape(*base_dims, *base_dims)
+        if len(base_dims) != k:
+            raise ValueError("base_dims and send_to_sites must have same length")
+        if len(set(targets)) != k or any(i < 0 or i >= N for i in targets):
+            raise ValueError("invalid send_to_sites")
+        if any(new_dims[s] != d for s, d in zip(targets, base_dims)):
+            raise ValueError("dimension mismatch")
+        if A.shape != (int(np.prod(base_dims)), int(np.prod(base_dims))):
+            raise ValueError("operator shape incompatible with base_dims")
 
-        # --- Step 2: Build full tensor product space ---
-        # First create identity on untouched subsystems
-        full_dim = prod(new_dims)
-        full_tensor = np.eye(full_dim, dtype=self.matrix.dtype).reshape(
-            *new_dims, *new_dims
-        )
+        rest = tuple(i for i in range(N) if i not in targets)
+        order = targets + rest  # reordered subsystem order
+        dims_ordered = tuple(new_dims[i] for i in order)
 
-        # Build index mapping
-        for left_indices in np.ndindex(*new_dims):
-            for right_indices in np.ndindex(*new_dims):
-                if all(
-                    left_indices[i] == right_indices[i]
-                    for i in range(N)
-                    if i not in send_to_sites
-                ):
-                    old_left = tuple(left_indices[i] for i in send_to_sites)
-                    old_right = tuple(right_indices[i] for i in send_to_sites)
-                    full_tensor[(*left_indices, *right_indices)] = op_tensor[
-                        (*old_left, *old_right)
-                    ]
+        d_rest = int(np.prod([new_dims[i] for i in rest])) if rest else 1
+        A_ext = np.kron(A, np.eye(d_rest, dtype=A.dtype))  # acts on [targets, rest]
 
-        return Operator(full_tensor.reshape(full_dim, full_dim))
+        # Convert from [targets, rest] basis ordering back to original site ordering.
+        inv = np.argsort(order)  # original index -> position in `order`
+        T = A_ext.reshape(*dims_ordered, *dims_ordered)
+        axes = tuple(inv) + tuple(i + N for i in inv)
+        T = T.transpose(axes)
+
+        D = int(np.prod(new_dims))
+        return Operator(T.reshape(D, D))
 
     def partialTrace(
         self, dims: tuple[int, ...], reduce_to_sites: tuple[int, ...]

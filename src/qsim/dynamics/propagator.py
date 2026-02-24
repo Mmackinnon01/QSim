@@ -41,7 +41,7 @@ class Propagator(ABC):
     - `evolveOperator`: evolution of operators.
     """
 
-    def __init__(self, ts=0.001, callbacks: list[Callable] = None):
+    def __init__(self, ts: Real = 0.001, callbacks: list[Callable] = None):
         self.ts = ts
         if callbacks is not None:
             if not isinstance(callbacks, list) or not callable(callbacks[0]):
@@ -52,10 +52,10 @@ class Propagator(ABC):
 
     @abstractmethod
     def evolve(
-        self, gen: Generator, state: QuantumState, t: Real, t0: Real = 0
+        self, gen: Generator, state: QuantumState, t_final: Real, t0: Real = 0
     ) -> QuantumState:
         """
-        Evolve a quantum state from time t0 to t0 + t.
+        Evolve a quantum state from time t0 to t_final.
 
         Parameters
         ----------
@@ -63,8 +63,8 @@ class Propagator(ABC):
             Dynamical generator.
         state : QuantumState
             State to evolve.
-        t : Real
-            Evolution time.
+        t_final : Real
+            Target time.
         t0 : Real, optional
             Initial time (default is 0).
         Returns
@@ -76,10 +76,10 @@ class Propagator(ABC):
 
     @abstractmethod
     def evolveOperator(
-        self, gen: Generator, operator: Operator, t: Real, t0: Real = 0
+        self, gen: Generator, op: Operator, t_final: Real, t0: Real = 0
     ) -> Operator:
         """
-        Evolve a quantum operator from time t0 to t0 - t.
+        Evolve a quantum operator from time t0 to t_final, t0>t_final.
 
         Parameters
         ----------
@@ -87,8 +87,8 @@ class Propagator(ABC):
             Dynamical generator.
         op : Operator
             Operator to evolve.
-        t : Real
-            Evolution time.
+        t_final : Real
+            Target time.
         t0 : Real, optional
             Initial time (default is 0).
         Returns
@@ -120,7 +120,7 @@ class ExponentialPropagator(Propagator, StateVisitor):
         self,
         gen: HamiltonianGenerator,
         state: QuantumState,
-        t: Real,
+        t_final: Real,
         t0: Real = 0,
     ) -> QuantumState:
         """
@@ -132,8 +132,8 @@ class ExponentialPropagator(Propagator, StateVisitor):
             Time-independent Hamiltonian generator.
         state : QuantumState
             State to evolve.
-        t : Real
-            Evolution time.
+        t_final : Real
+            Target time.
         t0 : Real, optional
             Initial time (default is 0).
         Returns
@@ -145,30 +145,30 @@ class ExponentialPropagator(Propagator, StateVisitor):
             raise ValueError(
                 "Exponential propagation only valid for time-independent dynamics"
             )
-        state = state.accept(self, t=t, t0=t0, gen=gen)
-        self._callback(state, t0 + t)
+        state = state.accept(self, t_final=t_final, t0=t0, gen=gen)
+        self._callback(state, t_final)
         return state
 
     def visitBra(
-        self, psi: Bra, gen: HamiltonianGenerator, t: Real, t0: Real = 0
+        self, psi: Bra, gen: HamiltonianGenerator, t_final: Real, t0: Real = 0
     ) -> Bra:
-        U = gen.unitaryOperator(t)
+        U = gen.unitaryOperator(t_final - t0)
         return psi @ U.hConj()
 
     def visitKet(
-        self, psi: Ket, gen: HamiltonianGenerator, t: Real, t0: Real = 0
+        self, psi: Ket, gen: HamiltonianGenerator, t_final: Real, t0: Real = 0
     ) -> Ket:
-        U = gen.unitaryOperator(t)
+        U = gen.unitaryOperator(t_final - t0)
         return U @ psi
 
     def visitDensityMatrix(
-        self, rho: DensityMatrix, gen: HamiltonianGenerator, t: Real, t0: Real = 0
+        self, rho: DensityMatrix, gen: HamiltonianGenerator, t_final: Real, t0: Real = 0
     ) -> DensityMatrix:
-        U = gen.unitaryOperator(t)
+        U = gen.unitaryOperator(t_final - t0)
         return U @ rho @ U.hConj()
 
     def evolveOperator(
-        self, gen: Generator, op: Operator, t: Real, t0: Real = 0
+        self, gen: Generator, op: Operator, t_final: Real, t0: Real = 0
     ) -> Operator:
         """
         Evolve a quantum operator using exact unitary propagation.
@@ -179,17 +179,17 @@ class ExponentialPropagator(Propagator, StateVisitor):
             Time-independent Hamiltonian generator.
         op : Operator
             State to evolve.
-        t : Real
-            Evolution time.
+        t_final : Real
+            target time time.
         t0 : Real, optional
             Initial time (default is 0).
         Returns
         -------
         Operator
-            The evolved operator at t_final = t-t0.
+            The evolved operator at t_final.
         """
-        U = gen.unitaryOperator(t)
-        self._callback(U, t0 - t)
+        U = gen.unitaryOperator(t0 - t_final)
+        self._callback(U, t_final)
         return U.hConj() @ op @ U
 
 
@@ -207,7 +207,7 @@ class RK4Propagator(Propagator, StateVisitor):
     """
 
     def evolve(
-        self, gen: Generator, state: QuantumState, t: Real, t0: Real = 0
+        self, gen: Generator, state: QuantumState, t_final: Real, t0: Real = 0
     ) -> QuantumState:
         """
         Evolve a quantum state using fourth-order Runge–Kutta integration.
@@ -217,7 +217,7 @@ class RK4Propagator(Propagator, StateVisitor):
             Infinitesimal generator of the dynamics.
         state : QuantumState
             Initial state.
-        t : Real
+        t_final : Real
             Evolution duration.
         t0 : Real, optional
             Initial time (default is 0).
@@ -226,24 +226,22 @@ class RK4Propagator(Propagator, StateVisitor):
         QuantumState
             The evolved state.
         """
-        t_evolve = t0
-        t_final = t0 + t
-        while t_evolve < t_final:
-            if t_final - t_evolve < self.ts:
-                timestep = t_final - t_evolve
+        t = t0
+
+        while t < t_final:
+            if t_final - t < self.ts:
+                timestep = t_final - t
             else:
                 timestep = self.ts
 
-            state = rungeKutta(
-                lambda state: gen.onState(state, t_evolve), timestep, state
-            )
-            t_evolve += timestep
-            self._callback(state, t_evolve)
+            state = rungeKutta(lambda t_n, s: gen.onState(s, t_n), t, timestep, state)
+            t += timestep
+            self._callback(state, t)
 
         return state
 
     def evolveOperator(
-        self, gen: Generator, op: Operator, t: Real, t0: Real = 0
+        self, gen: Generator, op: Operator, t_final: Real, t0: Real = 0
     ) -> Operator:
         """
         Evolve a quantum operator using fourth-order Runge–Kutta integration.
@@ -253,24 +251,26 @@ class RK4Propagator(Propagator, StateVisitor):
             Infinitesimal generator of the dynamics.
         op : Operator
             Initial state.
-        t : Real
+        t_final : Real
             Evolution duration.
         t0 : Real, optional
             Initial time (default is 0).
         Returns
         -------
         Operator
-            The evolved operator at t_final = t0 - t.
+            The evolved operator at t_final.
         """
-        t_evolve = t0
-        t_final = t0 - t
-        while t_evolve > t_final:
-            if t_evolve - t_final < self.ts:
-                timestep = t_evolve - t_final
+        t = t0
+
+        while t > t_final:
+            if t - t_final < self.ts:
+                timestep = t - t_final
             else:
                 timestep = self.ts
 
-            op = rungeKutta(lambda op: gen.onOperator(op, t_evolve), timestep, op)
-            t_evolve -= timestep
-            self._callback(op, t_evolve)
+            ## evaluation time of the function is inverted to facilitate backwards evolution while letting timestep be positive
+            op = rungeKutta(lambda t_n, s: gen.onOperator(s, t - t_n), 0, timestep, op)
+            t -= timestep
+            self._callback(op, t)
+
         return op
