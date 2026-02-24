@@ -81,3 +81,8 @@ def test_unsorted_times_invalid():
         dynamics.evolve(spin_down, ts=[PI / 2, PI / 4], t0=0)
     with pytest.raises(ValueError):
         dynamics.evolveOperator(sigmaX, ts=[PI / 2, PI], t0=2 * PI)
+
+
+def test_non_iterable_ts():
+    with pytest.raises(TypeError):
+        dynamics.evolve(spin_down, ts=PI)

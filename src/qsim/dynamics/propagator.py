@@ -39,6 +39,7 @@ class Propagator(ABC):
 
     - `evolve`: evolution of quantum states.
     - `evolveOperator`: evolution of operators.
+    - 'callbacks': a list of callables that accept parameters (state, t)
     """
 
     def __init__(self, ts: Real = 0.001, callbacks: list[Callable] = None):

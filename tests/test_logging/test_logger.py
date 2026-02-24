@@ -48,3 +48,11 @@ def test_log_same_time_twice_invalid():
     l.log(spin_down_dm, 1)
     with pytest.raises(ValueError):
         l.log(spin_down_dm, 1)
+
+
+def test_clear():
+    l = Logger(detectors=[det2], log_state=True)
+    l.log(spin_down_dm, 1)
+    l.log(spin_up_dm, 2)
+    l.clear()
+    assert len(l.state_log) == 0

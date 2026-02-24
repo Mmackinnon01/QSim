@@ -14,7 +14,9 @@ The separation between generator and propagator allows:
 
 from ast import Call
 from numbers import Real
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
+
+from tqdm.auto import tqdm
 
 from qsim.dynamics.generator import Generator
 from qsim.dynamics.propagator import Propagator
@@ -33,6 +35,7 @@ class Dynamics:
       (e.g., Schrödinger, von Neumann, or GKSL generator).
     - A `Propagator`, which specifies how the generator is integrated
       in time to produce finite-time evolution.
+    - 'callbacks': a list of callables that accept parameters (state, t)
 
     This design separates physical law (generator) from numerical
     method (propagator).
@@ -66,7 +69,9 @@ class Dynamics:
                 f"Callbacks must be a list of type callable, not {type(callback)}"
             )
 
-    def evolve(self, state: QuantumState, ts: list[Real], t0: Real = 0) -> QuantumState:
+    def evolve(
+        self, state: QuantumState, ts: Iterable[Real], t0: Real = 0, verbose: int = 0
+    ) -> QuantumState:
         """
         Evolve a quantum state from time `t0` to time `t`.
 
@@ -78,6 +83,8 @@ class Dynamics:
             List of times to evolve the state to.
         t0 : Real, optional
             Initial time (default is 0).
+        verbose: int, optional
+            Alters the logging detail provided (default is 0)
         Returns
         -------
         QuantumState
@@ -88,9 +95,11 @@ class Dynamics:
         if list(ts) != sorted(list(ts)):
             raise ValueError("Ts must be a list of increasing times")
 
-        return self._evolveObject(self._prop.evolve, state, ts, t0)
+        return self._evolveObject(self._prop.evolve, state, ts, t0, verbose)
 
-    def evolveOperator(self, op: Operator, ts: list[Real], t0: Real = 0) -> Operator:
+    def evolveOperator(
+        self, op: Operator, ts: Iterable[Real], t0: Real = 0, verbose: int = 0
+    ) -> Operator:
         """
         Evolve an operator in time from `t0` to `ts`. Each ts must be smaller than t0, as Heisenberg evolution works back in time
 
@@ -102,6 +111,8 @@ class Dynamics:
             List of times to evolve the operator to.
         t0 : Real, optional
             Initial time (default is 0).
+        verbose: int, optional
+            Alters the logging detail provided (default is 0)
         Returns
         -------
         Operator
@@ -112,11 +123,18 @@ class Dynamics:
         if list(ts) != sorted(list(ts), reverse=True):
             raise ValueError("Ts must be a list of increasing times")
 
-        return self._evolveObject(self._prop.evolveOperator, op, ts, t0)
+        return self._evolveObject(self._prop.evolveOperator, op, ts, t0, verbose)
 
-    def _evolveObject(self, prop_func, obj, ts, t0):
-        if not isinstance(ts, list):
-            raise TypeError(f"Ts must be a list of evolution times, not {type(ts)}")
+    def _evolveObject(
+        self, prop_func: Callable, obj, ts: Iterable[Real], t0: Real, verbose: int = 0
+    ):
+        if not isinstance(ts, Iterable):
+            raise TypeError(
+                f"Ts must be an iterable of evolution times, not {type(ts)}"
+            )
+
+        if verbose == 1:
+            ts = tqdm(ts)
 
         for t in ts:
             obj = prop_func(self._gen, obj, t, t0)

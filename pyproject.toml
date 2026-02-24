@@ -9,7 +9,8 @@ description = "Quantum simulator module for open and closed system dynamics"
 authors = [{name="Matthew Mackinnon"}]
 dependencies = [
     "numpy>=1.24",
-    "scipy>=1.10"
+    "scipy>=1.10",
+    "tqdm>=4.67"
 ]
 
 [tool.setuptools.packages.find]

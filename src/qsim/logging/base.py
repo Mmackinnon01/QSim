@@ -13,11 +13,7 @@ class Logger:
     ) -> None:
         self._detectors: list[Detector] = detectors if detectors else []
         self._log_state: bool = log_state
-        self.times: Set[Real] = set()
-        self.state_log: Dict[Real, QuantumState] = {}
-        self.observable_log: Dict[Detector, Dict[Real, Real]] = {
-            d: {} for d in self._detectors
-        }
+        self.clear()
 
     def log(self, state: QuantumState, t: Real) -> Self:
         if t in self.times:
@@ -31,3 +27,10 @@ class Logger:
             self.observable_log[detector][t] = detector.detect(state)
 
         return self
+
+    def clear(self):
+        self.times: Set[Real] = set()
+        self.state_log: Dict[Real, QuantumState] = {}
+        self.observable_log: Dict[Detector, Dict[Real, Real]] = {
+            d: {} for d in self._detectors
+        }
