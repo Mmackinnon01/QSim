@@ -85,8 +85,10 @@ class Dynamics:
         """
         if min(ts) < t0:
             raise ValueError(f"Evolution time {min(ts)} is less than initial time {t0}")
+        if list(ts) != sorted(list(ts)):
+            raise ValueError("Ts must be a list of increasing times")
 
-        return self._evolveObject(self._prop.evolve, state, sorted(ts), t0)
+        return self._evolveObject(self._prop.evolve, state, ts, t0)
 
     def evolveOperator(self, op: Operator, ts: list[Real], t0: Real = 0) -> Operator:
         """
@@ -107,10 +109,10 @@ class Dynamics:
         """
         if max(ts) > t0:
             raise ValueError(f"Evolution time {max(ts)} is more than initial time {t0}")
+        if list(ts) != sorted(list(ts), reverse=True):
+            raise ValueError("Ts must be a list of increasing times")
 
-        return self._evolveObject(
-            self._prop.evolveOperator, op, sorted(ts, reverse=True), t0
-        )
+        return self._evolveObject(self._prop.evolveOperator, op, ts, t0)
 
     def _evolveObject(self, prop_func, obj, ts, t0):
         if not isinstance(ts, list):
