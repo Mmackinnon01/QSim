@@ -52,6 +52,7 @@ def test_subtract_matrices(op):
 
 def test_tensor(op):
     assert pytest.approx(op.tensor(op).matrix) == np.kron(op.matrix, op.matrix)
+    assert pytest.approx((op ^ op).matrix) == np.kron(op.matrix, op.matrix)
 
 
 def test_tensor_invalid_type(op):
@@ -126,3 +127,15 @@ def test_partial_trace_reorder():
         pytest.approx(a.tensor(b).tensor(c).partialTrace((2, 2, 2), (1, 0)).matrix)
         == b.tensor(a).matrix
     )
+
+
+def test_transpose():
+    assert pytest.approx(Operator(np.array([[1, 2], [3, 4]])).T.matrix) == np.array(
+        [[1, 3], [2, 4]]
+    )
+
+
+def test_conjugate():
+    assert pytest.approx(
+        Operator(np.array([[1 + 1j, 2 - 2j], [3, 4]])).conj().matrix
+    ) == np.array([[1 - 1j, 2 + 2j], [3, 4]])

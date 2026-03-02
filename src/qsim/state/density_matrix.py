@@ -69,6 +69,9 @@ class DensityMatrix(QuantumState):
     def __truediv__(self, val: Number) -> DensityMatrix:
         return DensityMatrix(self._operator / val)
 
+    def __xor__(self, state: DensityMatrix) -> DensityMatrix:
+        return self.tensor(state)
+
     def hConj(self) -> OperatorLike:
         return DensityMatrix(self._operator.hConj())
 

@@ -98,6 +98,9 @@ class Operator(OperatorLike):
             return Operator(matrix.matrix @ self.matrix)
         return NotImplemented
 
+    def __xor__(self, matrix: Operator) -> Operator:
+        return self.tensor(matrix)
+
     @property
     def dim(self) -> int:
         return self.matrix.shape[0]
@@ -111,6 +114,13 @@ class Operator(OperatorLike):
         if not isinstance(matrix, np.ndarray):
             raise ValueError()
         self._matrix = matrix
+
+    def conj(self) -> Self:
+        return type(self)(self.matrix.conj())
+
+    @property
+    def T(self) -> Self:
+        return type(self)(self.matrix.T)
 
     def hConj(self) -> Self:
         return type(self)(self.matrix.T.conj())

@@ -80,6 +80,12 @@ def test_can_be_tensored(discrete_time_dependent):
     assert pytest.approx(top_tensor) == op_tensor
 
 
+def test_xor_tensor(discrete_time_dependent):
+    top_tensor = (discrete_time_dependent ^ discrete_time_dependent)(0).matrix
+    op_tensor = (sigmaX - sigmaZ).tensor(sigmaX - sigmaZ).matrix
+    assert pytest.approx(top_tensor) == op_tensor
+
+
 def test_can_be_commutated(discrete_time_dependent):
     top_tensor = discrete_time_dependent.commutator(sigmaX)(0).matrix
     op_tensor = (sigmaX - sigmaZ).commutator(sigmaX).matrix

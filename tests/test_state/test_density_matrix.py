@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from qsim.operator import Operator, sigmaX
-from qsim.state import DensityMatrix
+from qsim.state import DensityMatrix, Ket
 
 
 @pytest.fixture
@@ -47,4 +47,11 @@ def test_dm_plus_op_gives_dm(qubit_state):
 def test_can_cast_operator_to_density_if_legit():
     assert DensityMatrix(Operator(np.array([[1, 0], [0, 0]]))) == DensityMatrix(
         np.array([[1, 0], [0, 0]])
+    )
+
+
+def test_tensor():
+    s = DensityMatrix(np.array([[1, 0], [0, 0]]))
+    assert (s ^ s).state == pytest.approx(
+        np.array([[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
     )

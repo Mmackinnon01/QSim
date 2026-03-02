@@ -46,6 +46,9 @@ class WaveVector(ABC):
             return type(self)(self.state / value)
         return NotImplemented
 
+    def __xor__(self, state: Self) -> Self:
+        return self.tensor(state)
+
     def __neg__(self) -> Self:
         return type(self)(-self.state)
 

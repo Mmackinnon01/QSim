@@ -75,6 +75,7 @@ def test_tensor():
     c = Ket(np.array([1, 1]) / 2**0.5)
 
     assert pytest.approx(b.tensor(c).state) == np.array([0, 0, 1, 1]) / 2**0.5
+    assert pytest.approx((b ^ c).state) == np.array([0, 0, 1, 1]) / 2**0.5
 
 
 def test_tensor_ket_bra_incompatible():

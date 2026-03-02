@@ -134,7 +134,24 @@ class TOperator(OperatorLike):
             [(lambda t, f=f: f(t).conjugate(), op.hConj()) for f, op in self._terms]
         )
 
-    def tensor(self, matrix: OperatorLike) -> OperatorLike:
+    def conj(self) -> TOperator:
+        return TOperator(
+            [(lambda t, f=f: f(t).conjugate(), op.conj()) for f, op in self._terms]
+        )
+
+    @property
+    def T(self) -> TOperator:
+        return TOperator([(lambda t, f=f: f(t), op.T) for f, op in self._terms])
+
+    def __xor__(self, matrix: OperatorLike) -> TOperator:
+        return self.tensor(matrix)
+
+    def __rxor__(self, matrix: OperatorLike) -> TOperator:
+        if isinstance(matrix, Operator):
+            operator = TOperator.from_static(matrix)
+        return operator.tensor(self)
+
+    def tensor(self, matrix: OperatorLike) -> TOperator:
         if isinstance(matrix, Operator):
             return TOperator([(f, op.tensor(matrix)) for f, op in self._terms])
         elif isinstance(matrix, TOperator):
@@ -147,6 +164,7 @@ class TOperator(OperatorLike):
                         (lambda t, f=f, g=g: f(t) * g(t), op_left.tensor(op_right))
                     )
             return TOperator(terms)
+        raise TypeError("Tensor only possible between TOperator and Operator")
 
     def commutator(self, matrix: OperatorLike) -> OperatorLike:
         return self @ matrix - matrix @ self
