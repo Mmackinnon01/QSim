@@ -15,13 +15,20 @@ from .density_matrix import DensityMatrix
 class WaveVector(ABC):
 
     def __init__(self, state: np.ndarray) -> None:
-        self.state = state
+        if isinstance(state, np.ndarray):
+            self.state = state
+        else:
+            raise TypeError(f"Cannot assign object of type {type(state)} to Ket")
 
     @abstractmethod
     def __matmul__(self, other: Any) -> Self | float | DensityMatrix: ...
 
     @abstractmethod
     def __rmatmul__(self, other: Any) -> Self | float | DensityMatrix: ...
+
+    def __repr__(self) -> str:
+        dim = self.dim
+        return f"{self.__class__.__name__}(dim={dim})"
 
     def __mul__(self, value: Number) -> Self:
         if isinstance(value, Number):
@@ -34,12 +41,28 @@ class WaveVector(ABC):
         return NotImplemented
 
     def __add__(self, value: Any) -> Self:
-        if isinstance(value, Number) or isinstance(value, WaveVector):
+        if isinstance(value, Number):
             return type(self)(self.state + value)
+        if isinstance(value, WaveVector):
+            return type(self)(self.state + value.state)
         return NotImplemented
 
     def __radd__(self, value: Any) -> Self:
         return self.__add__(value)
+
+    def __sub__(self, value: Any) -> Self:
+        if isinstance(value, Number):
+            return type(self)(self.state - value)
+        if isinstance(value, WaveVector):
+            return type(self)(self.state - value.state)
+        return NotImplemented
+
+    def __rsub___(self, value: Any) -> Self:
+        if isinstance(value, Number):
+            return type(self)(value - self.state)
+        if isinstance(value, WaveVector):
+            return type(self)(value.state - self.state)
+        return NotImplemented
 
     def __truediv__(self, value: Number) -> Self:
         if isinstance(value, Number):
@@ -78,9 +101,7 @@ class WaveVector(ABC):
 
     def tensor(self, other: Self) -> Self:
         if not isinstance(other, type(self)):
-            raise TypeError(
-                f"Tensor product of type {type(self)} with type {type(other)} is not possible"
-            )
+            return NotImplemented
         return type(self)(np.kron(self.state, other.state))
 
     def partialTrace(
