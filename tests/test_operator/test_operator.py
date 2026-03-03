@@ -5,7 +5,7 @@ from typing import Type
 import numpy as np
 import pytest
 
-from qsim.operator import Observable, Operator
+from qsim.lin_alg import Observable, Operator
 
 pauliZ = Operator(np.array([[1, 0], [0, -1]]))
 pauliX = Operator(np.array([[0, 1], [1, 0]]))
@@ -56,14 +56,17 @@ def test_tensor(op):
 
 
 def test_tensor_invalid_type(op):
-    with pytest.raises(TypeError):
-        op.tensor(1)
+    op.tensor(1) == NotImplemented
 
 
 def test_operator_commutator():
     assert pytest.approx(pauliZ.commutator(pauliX).matrix) == np.array(
         [[0, 2], [-2, 0]]
     )
+
+
+def test_pow():
+    assert pytest.approx((pauliZ**2).matrix) == np.array([[1, 0], [0, 1]])
 
 
 def test_change_hilbert_space_single_op():

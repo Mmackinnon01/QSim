@@ -1,4 +1,5 @@
-from .base import (
+from .observable import Observable
+from .operator import (
     I,
     Operator,
     OperatorLike,
@@ -8,5 +9,5 @@ from .base import (
     sigmaY,
     sigmaZ,
 )
-from .observable import Observable
 from .time_dependent_operator import TOperator
+from .vector import Vector

@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from qsim.ensemble import Haar, HilbertSchmidt
-from qsim.operator.base import Operator
+from qsim.lin_alg.operator import Operator
 from qsim.state.density_matrix import DensityMatrix
 from qsim.state.wave_vector import Ket
 

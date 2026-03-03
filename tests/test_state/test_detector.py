@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from qsim.operator import sigmaPlus, sigmaX, sigmaZ
+from qsim.lin_alg import sigmaPlus, sigmaX, sigmaZ
 from qsim.state import Detector
 from qsim.state.density_matrix import DensityMatrix
 from qsim.state.wave_vector import Ket

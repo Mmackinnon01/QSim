@@ -3,8 +3,8 @@ from multiprocessing import Value
 import numpy as np
 import pytest
 
+from qsim.lin_alg import sigmaX, sigmaZ
 from qsim.logging import Logger
-from qsim.operator import sigmaX, sigmaZ
 from qsim.state.density_matrix import DensityMatrix
 from qsim.state.detector import Detector
 from qsim.state.wave_vector import Ket

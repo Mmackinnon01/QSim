@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from functools import reduce
+from multiprocessing import Value
 from numbers import Real
 from typing import Self
 
-from scipy.linalg import expm
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.linalg import eig, expm
 
-from qsim.operator import Operator
-from qsim.operator.base import OperatorLike
+from qsim.lin_alg import I, Operator, Vector
+from qsim.lin_alg.operator import OperatorLike
 from qsim.state import Bra, DensityMatrix, Ket, QuantumState, StateVisitor
 
 
@@ -175,10 +178,101 @@ class HamiltonianGenerator(Generator):
             self.H.changeHilbertSpace(new_dims, send_to_sites, base_dims)
         )
 
-    def isTimeIndependent(self) -> bool:
-        return isinstance(self.H, Operator)
-
-    def unitaryOperator(self, t: Real) -> Operator:
+    def unitaryOperator(self, t: Real, delta_t: Real) -> Operator:
         if t not in self._unitary_cache:
-            self._unitary_cache[t] = Operator(expm(-1j * self.H.matrix * t))
+            self._unitary_cache[t] = Operator(expm(-1j * self.H(t).matrix * delta_t))
         return self._unitary_cache[t]
+
+
+class LiouvillianGenerator:
+
+    def __init__(self, L: OperatorLike) -> None:
+        self.L = L
+        self._exponential_cache = {}
+        self._spectral_cache = {}
+
+    def __add__(self, dynamic: LiouvillianGenerator) -> LiouvillianGenerator:
+        if isinstance(dynamic, HamiltonianGenerator):
+            if self.dim == dynamic.dim:
+                return LiouvillianGenerator(self.L + dynamic.L)
+            else:
+                raise ValueError(
+                    f"Cannot add LiouvillianGenerators with dims={self.dim}, {dynamic.dim}"
+                )
+        return NotImplemented
+
+    @classmethod
+    def fromGKSL(cls, gen: GKSLGenerator) -> LiouvillianGenerator:
+        dim = gen.H.dim
+        hermitian_component = -1j * ((I(dim) ^ gen.H) - (gen.H.T ^ I(dim)))
+        if gen.jumps:
+            non_hermitian_component = reduce(
+                lambda x, y: x + y,
+                [
+                    (jump.conj() ^ jump)
+                    - 0.5
+                    * (
+                        (I(dim) ^ (jump.hConj() @ jump))
+                        + ((jump.hConj() @ jump).T ^ I(dim))
+                    )
+                    for jump in gen.jumps
+                ],
+            )
+            return LiouvillianGenerator(hermitian_component + non_hermitian_component)
+        else:
+            return LiouvillianGenerator(hermitian_component)
+
+    @property
+    def dim(self) -> int:
+        return self.L.dim
+
+    def visitBra(self, psi: Bra, t: Real) -> Bra:
+        raise TypeError("Superoperator generator does not work on Bra")
+
+    def visitKet(self, psi: Ket, t: Real) -> Ket:
+        return self.L(t) @ psi
+
+    def visitDensityMatrix(self, rho: DensityMatrix, t: Real) -> DensityMatrix:
+        raise TypeError("Superoperator generator does not work on Density Matrices")
+
+    def onOperator(self, op: Operator, t: float = 0) -> Operator:
+        raise TypeError("Superoperator generator does not work on Operators")
+
+    def changeHilbertSpace(
+        self,
+        new_dims: tuple[int, ...],
+        send_to_sites: tuple[int, ...],
+        base_dims: tuple[int, ...] | None = None,
+    ) -> LiouvillianGenerator:
+        if not base_dims:
+            base_dims = (self.dim,)
+        return LiouvillianGenerator(
+            self.L.changeHilbertSpace(new_dims, send_to_sites, base_dims)
+        )
+
+    def unitaryOperator(self, t: Real, delta_t: Real) -> Operator:
+        if t not in self._exponential_cache:
+            self._exponential_cache[t] = Operator(expm(self.L(t).matrix * delta_t))
+        return self._exponential_cache[t]
+
+    def spectralDecomposition(
+        self, t: Real = 0
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        if t not in self._spectral_cache:
+            eigs, lv, rv = eig(self.L(t).matrix, left=True)
+            lv = [Vector(l.conj().reshape(1, -1)) for l in lv.T]
+            rv = [Vector(r) for r in rv.T]
+            eigs, lv, rv = map(
+                np.array, zip(*sorted(zip(eigs, lv, rv), key=lambda x: -x[0]))
+            )
+            self._spectral_cache[t] = (eigs, lv, rv)
+        return self._spectral_cache[t]
+
+    def plotSpectrum(self, t: Real = 0, ax: plt.axes | None = None) -> plt.axes:
+        eigs, lv, rv = self.spectralDecomposition(t)
+        if not ax:
+            ax = plt.subplot()
+        ax.scatter(np.real(eigs), np.imag(eigs))
+        ax.set_xlabel(r"Re$(\lambda_i)$")
+        ax.set_ylabel(r"Im$(\lambda_i)$")
+        return ax

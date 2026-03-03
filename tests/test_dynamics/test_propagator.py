@@ -9,7 +9,7 @@ from qsim.dynamics import (
     HamiltonianGenerator,
     RK4Propagator,
 )
-from qsim.operator import Observable, Operator, sigmaPlus, sigmaX, sigmaZ
+from qsim.lin_alg import Observable, Operator, sigmaPlus, sigmaX, sigmaZ
 from qsim.state import Bra, DensityMatrix, Ket
 
 PI = math.pi
@@ -74,7 +74,7 @@ def test_evolve_ket():
     evolved_state = exponential_propagator.evolve(
         xSpinGenerator, spinUpKet, t_final=PI / 2
     )
-    assert pytest.approx(evolved_state.state) == (-1j * spinDownKet).state
+    assert pytest.approx(evolved_state.matrix) == (-1j * spinDownKet).matrix
     assert isinstance(evolved_state, Ket)
 
 
@@ -82,7 +82,7 @@ def test_evolve_bra():
     evolved_state = exponential_propagator.evolve(
         xSpinGenerator, spinUpBra, t_final=PI / 2
     )
-    assert pytest.approx(evolved_state.state) == (1j * spinDownBra).state
+    assert pytest.approx(evolved_state.matrix) == (1j * spinDownBra).matrix
     assert isinstance(evolved_state, Bra)
 
 

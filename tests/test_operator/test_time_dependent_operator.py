@@ -5,7 +5,7 @@ from token import OP
 import numpy as np
 import pytest
 
-from qsim.operator import Operator, TOperator, sigmaX, sigmaZ
+from qsim.lin_alg import Operator, TOperator, sigmaX, sigmaZ
 
 
 def discrete(t):

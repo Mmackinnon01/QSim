@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.stats import unitary_group
 
-from qsim.operator.base import Operator
+from qsim.lin_alg.operator import Operator
 from qsim.state.density_matrix import DensityMatrix
 from qsim.state.wave_vector import Ket
 

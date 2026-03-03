@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from qsim.dynamics import GKSLGenerator, HamiltonianGenerator
-from qsim.operator import (
+from qsim.lin_alg import (
     Observable,
     Operator,
     sigmaMinus,
@@ -13,7 +13,7 @@ from qsim.operator import (
     sigmaY,
     sigmaZ,
 )
-from qsim.operator.time_dependent_operator import TOperator
+from qsim.lin_alg.time_dependent_operator import TOperator
 from qsim.state import Bra, DensityMatrix, Ket
 
 PI = math.pi
@@ -144,13 +144,13 @@ def test_generator_density_matrix():
 
 
 def test_generator_ket():
-    H = xSpinDynamics.onState(spinUpKet).state
-    assert pytest.approx(H) == -1j * (sigmaX @ spinUpKet).state
+    H = xSpinDynamics.onState(spinUpKet).matrix
+    assert pytest.approx(H) == -1j * (sigmaX @ spinUpKet).matrix
 
 
 def test_generator_bra():
-    H = xSpinDynamics.onState(spinUpBra).state
-    assert pytest.approx(H) == 1j * (spinUpBra @ sigmaX.hConj()).state
+    H = xSpinDynamics.onState(spinUpBra).matrix
+    assert pytest.approx(H) == 1j * (spinUpBra @ sigmaX.hConj()).matrix
 
 
 def test_evolve_operator():
@@ -211,10 +211,10 @@ def test_add_dynamics(composite_hamiltonian):
 def test_generator_separable_dynamics_ket(simple_composite_hamiltonian):
     g = simple_composite_hamiltonian.onState(bell_state_ket)
     assert (
-        pytest.approx(g.state)
+        pytest.approx(g.matrix)
         == -1j
         * (np.kron(np.eye(2), sigmaY.matrix) + np.kron(sigmaX.matrix, np.eye(2)))
-        @ bell_state_ket.state
+        @ bell_state_ket.matrix
     )
 
 

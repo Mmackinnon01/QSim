@@ -10,7 +10,7 @@ from qsim.dynamics import (
     RK4Propagator,
 )
 from qsim.dynamics.base import Dynamics
-from qsim.operator import Observable, Operator, sigmaPlus, sigmaX, sigmaZ
+from qsim.lin_alg import Observable, Operator, sigmaPlus, sigmaX, sigmaZ
 from qsim.state import Bra, DensityMatrix, Ket
 
 PI = math.pi

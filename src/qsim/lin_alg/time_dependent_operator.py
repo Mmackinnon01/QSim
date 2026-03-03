@@ -9,7 +9,7 @@ from typing import Any, Callable
 
 import numpy as np
 
-from .base import Operator, OperatorLike
+from .operator import Operator, OperatorLike
 
 
 class TOperator(OperatorLike):
@@ -19,12 +19,23 @@ class TOperator(OperatorLike):
     ) -> None:
         if len(terms) == 0:
             raise ValueError("TOperator can't be instantiated with an empty terms list")
-        self._terms = terms
+        self._terms = []
+        for term in terms:
+            if not np.allclose(term[1].matrix, 0):
+                self._terms.append(term)
 
     def __call__(self, t: Real) -> Operator:
         if isinstance(t, Real):
             return reduce(lambda x, y: x + y, [f(t) * op(t) for (f, op) in self._terms])
         raise TypeError(f"OperatorLike protocol requires real input, not {type(t)}")
+
+    def __repr__(self):
+        term_strs = []
+        for f, op in self._terms:
+            fname = getattr(f, "__name__", f.__class__.__name__)
+            term_strs.append(f"{fname}(t) * {repr(op)}")
+        inner = ",\n  ".join(term_strs)
+        return f"TOperator(\n  {inner}\n)"
 
     @property
     def dim(self) -> int:
@@ -158,13 +169,11 @@ class TOperator(OperatorLike):
             terms = []
             for f, op_left in self._terms:
                 for g, op_right in matrix._terms:
-                    if isinstance(op_left, Operator):
-                        op_left = TOperator.from_static(op_left)
                     terms.append(
                         (lambda t, f=f, g=g: f(t) * g(t), op_left.tensor(op_right))
                     )
             return TOperator(terms)
-        raise TypeError("Tensor only possible between TOperator and Operator")
+        return NotImplemented
 
     def commutator(self, matrix: OperatorLike) -> OperatorLike:
         return self @ matrix - matrix @ self

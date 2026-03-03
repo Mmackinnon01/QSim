@@ -20,8 +20,8 @@ from tqdm.auto import tqdm
 
 from qsim.dynamics.generator import Generator
 from qsim.dynamics.propagator import Propagator
-from qsim.operator import Operator
-from qsim.operator.base import Operator
+from qsim.lin_alg import Operator
+from qsim.lin_alg.operator import Operator
 from qsim.state import QuantumState
 from qsim.state.base import QuantumState
 

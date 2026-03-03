@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from qsim.operator import Operator, sigmaX
+from qsim.lin_alg import Operator, sigmaX
 from qsim.state import DensityMatrix, Ket
 
 

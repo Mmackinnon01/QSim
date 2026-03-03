@@ -51,10 +51,8 @@ class Operator(OperatorLike):
         return np.allclose(self.matrix, value.matrix)
 
     def __repr__(self) -> str:
-        return (
-            f"{self.__class__.__name__}(\n"
-            f"{np.array2string(self.matrix, precision=3)}\n)"
-        )
+        dim = self.dim
+        return f"Operator(dim={dim})"
 
     def __truediv__(self, val: Number) -> Self:
         if isinstance(val, Number):
@@ -101,6 +99,11 @@ class Operator(OperatorLike):
     def __xor__(self, matrix: Operator) -> Operator:
         return self.tensor(matrix)
 
+    def __pow__(self, power: int):
+        if isinstance(power, int):
+            return Operator(np.linalg.matrix_power(self.matrix, power))
+        return NotImplemented
+
     @property
     def dim(self) -> int:
         return self.matrix.shape[0]
@@ -137,9 +140,7 @@ class Operator(OperatorLike):
     def tensor(self, matrix: Self) -> Self:
         if isinstance(matrix, type(self)):
             return type(self)(np.kron(self.matrix, matrix.matrix))
-        raise TypeError(
-            "Tensor product only possible with two matrices of the same type"
-        )
+        return NotImplemented
 
     def commutator(self, matrix: M) -> M:
         return self @ matrix - matrix @ self

@@ -7,8 +7,8 @@ from webbrowser import Opera
 
 import numpy as np
 
-from qsim.operator import Operator
-from qsim.operator.base import OperatorLike
+from qsim.lin_alg import Operator
+from qsim.lin_alg.operator import OperatorLike
 
 from .base import QuantumState, R, StateVisitor
 
@@ -25,10 +25,14 @@ class DensityMatrix(QuantumState):
                 f"Object of type {type(state)} can not be assigned to DensityMatrix.state"
             )
 
+    def __repr__(self) -> str:
+        dim = self.dim
+        return f"DensityMatrix(dim={dim})"
+
     def __eq__(self, value: object) -> bool:
         if isinstance(value, DensityMatrix) or isinstance(value, Operator):
-            return np.allclose(self.matrix, value.matrix)
-        return False
+            return self._operator == value._operator
+        return NotImplemented
 
     def __call__(self, t: Real) -> DensityMatrix:
         return DensityMatrix(self._operator(t))

@@ -21,8 +21,8 @@ from sre_parse import State
 from typing import Any, Callable
 
 from qsim.dynamics.generator import Generator, HamiltonianGenerator
+from qsim.lin_alg.operator import Operator
 from qsim.numeric_solvers.runge_kutta import rungeKutta
-from qsim.operator.base import Operator
 from qsim.state.base import QuantumState, StateVisitor
 from qsim.state.density_matrix import DensityMatrix
 from qsim.state.wave_vector import Bra, Ket
@@ -107,11 +107,11 @@ class Propagator(ABC):
 
 class ExponentialPropagator(Propagator, StateVisitor):
     """
-    Exact propagator for time-independent Hamiltonian dynamics.
+    Exact propagator for time-independent or discrete time-dependent Hamiltonian dynamics
+    The assumption is made that the driving Hamiltonian is constant on the supplied time interval
 
     This propagator computes evolution using the unitary operator
-    U(t) = exp(-i H t), obtained from a time-independent
-    `HamiltonianGenerator`.
+    U(t) = exp(-i H t), obtained from a `HamiltonianGenerator`.
 
     It supports evolution of kets, bras, density matrices,
     and operators via visitor-based double dispatch.
@@ -142,10 +142,6 @@ class ExponentialPropagator(Propagator, StateVisitor):
         QuantumState
             The evolved state.
         """
-        if not gen.isTimeIndependent():
-            raise ValueError(
-                "Exponential propagation only valid for time-independent dynamics"
-            )
         state = state.accept(self, t_final=t_final, t0=t0, gen=gen)
         self._callback(state, t_final)
         return state
@@ -153,19 +149,19 @@ class ExponentialPropagator(Propagator, StateVisitor):
     def visitBra(
         self, psi: Bra, gen: HamiltonianGenerator, t_final: Real, t0: Real = 0
     ) -> Bra:
-        U = gen.unitaryOperator(t_final - t0)
+        U = gen.unitaryOperator(t0, t_final - t0)
         return psi @ U.hConj()
 
     def visitKet(
         self, psi: Ket, gen: HamiltonianGenerator, t_final: Real, t0: Real = 0
     ) -> Ket:
-        U = gen.unitaryOperator(t_final - t0)
+        U = gen.unitaryOperator(t0, t_final - t0)
         return U @ psi
 
     def visitDensityMatrix(
         self, rho: DensityMatrix, gen: HamiltonianGenerator, t_final: Real, t0: Real = 0
     ) -> DensityMatrix:
-        U = gen.unitaryOperator(t_final - t0)
+        U = gen.unitaryOperator(t0, t_final - t0)
         return U @ rho @ U.hConj()
 
     def evolveOperator(
@@ -189,7 +185,7 @@ class ExponentialPropagator(Propagator, StateVisitor):
         Operator
             The evolved operator at t_final.
         """
-        U = gen.unitaryOperator(t0 - t_final)
+        U = gen.unitaryOperator(t0, t0 - t_final)
         self._callback(U, t_final)
         return U.hConj() @ op @ U
 

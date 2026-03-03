@@ -1,7 +1,7 @@
 from numbers import Real
 
-from qsim.operator.base import Operator
-from qsim.operator.observable import Observable
+from qsim.lin_alg.observable import Observable
+from qsim.lin_alg.operator import Operator
 from qsim.state.density_matrix import DensityMatrix
 from qsim.state.wave_vector import Bra, Ket
 

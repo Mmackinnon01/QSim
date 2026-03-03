@@ -1,1 +1,1 @@
-from . import dynamics, ensemble, logging, operator, state
+from . import dynamics, ensemble, lin_alg, logging, state
