@@ -94,3 +94,16 @@ def test_partial_trace(bell_wave_vector):
         pytest.approx(a.tensor(b).tensor(c).partialTrace((2, 2, 2), (1, 0)).matrix)
         == (b @ b.hConj()).tensor(a @ a.hConj()).matrix
     )
+
+
+def test_change_basis():
+    assert (
+        Ket(np.array([0.5**0.5, 0.5**0.5])).changeBasis(
+            np.array([[-(0.5**0.5), 0.5**0.5], [0.5**0.5, 0.5**0.5]])
+        )
+    ).matrix == pytest.approx(np.array([[0], [1]]))
+    assert (
+        Bra(np.array([0.5**0.5, 0.5**0.5])).changeBasis(
+            np.array([[-(0.5**0.5), 0.5**0.5], [0.5**0.5, 0.5**0.5]])
+        )
+    ).matrix == pytest.approx(np.array([[0, 1]]))

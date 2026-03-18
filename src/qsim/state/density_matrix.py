@@ -150,3 +150,6 @@ class DensityMatrix(QuantumState):
 
     def trace(self) -> Real:
         return np.trace(self.matrix)
+
+    def changeBasis(self, basis: np.ndarray) -> DensityMatrix:
+        return DensityMatrix(self._operator.changeBasis(basis))

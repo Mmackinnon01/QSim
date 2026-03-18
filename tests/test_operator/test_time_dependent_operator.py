@@ -1,7 +1,3 @@
-from email.mime import base
-from tkinter import TOP
-from token import OP
-
 import numpy as np
 import pytest
 
@@ -90,3 +86,15 @@ def test_can_be_commutated(discrete_time_dependent):
     top_tensor = discrete_time_dependent.commutator(sigmaX)(0).matrix
     op_tensor = (sigmaX - sigmaZ).commutator(sigmaX).matrix
     assert pytest.approx(top_tensor) == op_tensor
+
+
+def test_change_basis():
+    top = sigmaZ + (lambda t: t) * TOperator.from_static(sigmaX)
+    top = top.changeBasis(sigmaX.eigenvectors)
+    assert (
+        pytest.approx(top(1).matrix)
+        == (
+            (sigmaX.changeBasis(sigmaX.eigenvectors))
+            + sigmaZ.changeBasis(sigmaX.eigenvectors)
+        ).matrix
+    )

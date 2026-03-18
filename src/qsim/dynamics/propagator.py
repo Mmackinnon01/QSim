@@ -17,8 +17,9 @@ physical model to be evolved using different numerical methods.
 
 from abc import ABC, abstractmethod
 from numbers import Real
-from sre_parse import State
 from typing import Any, Callable
+
+import numpy as np
 
 from qsim.dynamics.generator import Generator, HamiltonianGenerator
 from qsim.lin_alg.operator import Operator
@@ -188,6 +189,95 @@ class ExponentialPropagator(Propagator, StateVisitor):
         U = gen.unitaryOperator(t0, t0 - t_final)
         self._callback(U, t_final)
         return U.hConj() @ op @ U
+
+
+class DiagonalPropagator(Propagator, StateVisitor):
+    """
+    Exact propagator for time-independent diagonalised Hamiltonian dynamics
+
+    This propagator computes evolution by updating the phases of each eigenmode of the Hamiltonian
+
+    It supports evolution of kets, bras, density matrices,
+    and operators via visitor-based double dispatch.
+    """
+
+    def evolve(
+        self,
+        gen: HamiltonianGenerator,
+        state: QuantumState,
+        t_final: Real,
+        t0: Real = 0,
+    ) -> QuantumState:
+        """
+        Evolve a quantum state using exact unitary propagation.
+
+        Parameters
+        ----------
+        gen : HamiltonianGenerator
+            Time-independent Hamiltonian generator.
+        state : QuantumState
+            State to evolve.
+        t_final : Real
+            Target time.
+        t0 : Real, optional
+            Initial time (default is 0).
+        Returns
+        -------
+        QuantumState
+            The evolved state.
+        """
+        if not np.all(
+            np.abs(gen.H.matrix - np.diag(np.diagonal(gen.H.matrix))) < 10e-12
+        ):
+            raise ValueError(
+                f"Generator Hamiltonian is not diagonal, magnitude of off-diagonal elements is {np.max(np.abs(gen.H.matrix - np.diag(np.diagonal(gen.H.matrix))))} > 10e-12"
+            )
+        state = state.accept(self, t_final=t_final, t0=t0, gen=gen)
+        self._callback(state, t_final)
+        return state
+
+    def visitBra(
+        self, psi: Bra, gen: HamiltonianGenerator, t_final: Real, t0: Real = 0
+    ) -> Bra:
+        U = np.diag(gen.unitaryOperator(t0, t_final - t0).matrix)
+        return Bra(psi.matrix * U.conj()[None, :])
+
+    def visitKet(
+        self, psi: Ket, gen: HamiltonianGenerator, t_final: Real, t0: Real = 0
+    ) -> Ket:
+        U = np.diag(gen.unitaryOperator(t0, t_final - t0).matrix)
+        return Ket(U[:, None] * psi.matrix)
+
+    def visitDensityMatrix(
+        self, rho: DensityMatrix, gen: HamiltonianGenerator, t_final: Real, t0: Real = 0
+    ) -> DensityMatrix:
+        U = np.diag(gen.unitaryOperator(t0, t_final - t0).matrix)
+        return DensityMatrix(U[:, None] * rho.matrix * U.conj()[None, :])
+
+    def evolveOperator(
+        self, gen: Generator, op: Operator, t_final: Real, t0: Real = 0
+    ) -> Operator:
+        """
+        Evolve a quantum operator using exact unitary propagation.
+
+        Parameters
+        ----------
+        gen : HamiltonianGenerator
+            Time-independent Hamiltonian generator.
+        op : Operator
+            State to evolve.
+        t_final : Real
+            target time time.
+        t0 : Real, optional
+            Initial time (default is 0).
+        Returns
+        -------
+        Operator
+            The evolved operator at t_final.
+        """
+        U = np.diag(gen.unitaryOperator(t0, t0 - t_final).matrix)
+        self._callback(U, t_final)
+        return Operator(U.conj()[:, None] * op.matrix * U[None, :])
 
 
 class RK4Propagator(Propagator, StateVisitor):

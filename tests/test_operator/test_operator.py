@@ -142,3 +142,18 @@ def test_conjugate():
     assert pytest.approx(
         Operator(np.array([[1 + 1j, 2 - 2j], [3, 4]])).conj().matrix
     ) == np.array([[1 - 1j, 2 + 2j], [3, 4]])
+
+
+def test_eigenbasis():
+    assert pytest.approx(pauliX.eigenvectors) == np.array(
+        [[-(0.5**0.5), (0.5**0.5)], [(0.5**0.5), (0.5**0.5)]]
+    )
+    assert pytest.approx(pauliX.eigenvalues) == np.array([1, -1]) or pytest.approx(
+        pauliX.eigenvalues
+    ) == np.array([-1, 1])
+
+
+def test_change_basis():
+    assert pytest.approx(pauliX.changeBasis(pauliX.eigenvectors).matrix) == np.array(
+        [[-1, 0], [0, 1]]
+    )

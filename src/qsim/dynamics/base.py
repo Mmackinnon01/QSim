@@ -31,10 +31,10 @@ class Dynamics:
     High-level wrapper representing a quantum dynamical model.
         A `Dynamics` object combines:
 
-    - A `Generator`, which defines the infinitesimal evolution
-      (e.g., Schrödinger, von Neumann, or GKSL generator).
     - A `Propagator`, which specifies how the generator is integrated
       in time to produce finite-time evolution.
+    - A `Generator`, which defines the infinitesimal evolution
+      (e.g., Schrödinger, von Neumann, or GKSL generator).
     - 'callbacks': a list of callables that accept parameters (state, t)
 
     This design separates physical law (generator) from numerical

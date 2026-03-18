@@ -12,6 +12,7 @@ from scipy.linalg import eig, expm
 
 from qsim.lin_alg import I, Operator, Vector
 from qsim.lin_alg.operator import OperatorLike
+from qsim.lin_alg.transforms import unvectorise
 from qsim.state import Bra, DensityMatrix, Ket, QuantumState, StateVisitor
 
 
@@ -256,7 +257,7 @@ class LiouvillianGenerator:
         return self._exponential_cache[t]
 
     def spectralDecomposition(
-        self, t: Real = 0
+        self, t: Real = 0, biorthonomalise: bool = False
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         if t not in self._spectral_cache:
             eigs, lv, rv = eig(self.L(t).matrix, left=True)
@@ -265,6 +266,11 @@ class LiouvillianGenerator:
             eigs, lv, rv = map(
                 np.array, zip(*sorted(zip(eigs, lv, rv), key=lambda x: -x[0]))
             )
+            if biorthonomalise:
+                for i, cond in enumerate(np.isclose(eigs, 0, rtol=10e-10)):
+                    if cond:
+                        rv[i] = rv[i] / unvectorise(rv[i]).trace()
+                lv = [left / (left @ right) for left, right in zip(lv, rv)]
             self._spectral_cache[t] = (eigs, lv, rv)
         return self._spectral_cache[t]
 

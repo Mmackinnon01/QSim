@@ -175,8 +175,11 @@ class TOperator(OperatorLike):
             return TOperator(terms)
         return NotImplemented
 
-    def commutator(self, matrix: OperatorLike) -> OperatorLike:
+    def commutator(self, matrix: OperatorLike) -> TOperator:
         return self @ matrix - matrix @ self
+
+    def changeBasis(self, basis: np.ndarray) -> TOperator:
+        return TOperator([(f, op.changeBasis(basis)) for f, op in self._terms])
 
 
 def doesCallableReturnNumber(c: Callable):

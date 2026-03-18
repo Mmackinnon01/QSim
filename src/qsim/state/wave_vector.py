@@ -23,6 +23,9 @@ class WaveVector(ABC):
     @abstractmethod
     def __rmatmul__(self, other: Any) -> Self | float | DensityMatrix: ...
 
+    @abstractmethod
+    def changeBasis(self, basis: np.ndarray) -> Self: ...
+
     def __repr__(self) -> str:
         dim = self.dim
         return f"{self.__class__.__name__}(dim={dim})"
@@ -210,6 +213,9 @@ class Bra(WaveVector):
         ket_self = self.hConj()
         return (ket_self.partialTrace(dims, reduce_to_sites)).hConj()
 
+    def changeBasis(self, basis: np.ndarray) -> Bra:
+        return self @ Operator(basis)
+
 
 class Ket(WaveVector):
 
@@ -247,3 +253,6 @@ class Ket(WaveVector):
 
     def accept(self, visitor: StateVisitor[R], **kwargs) -> R:
         return visitor.visitKet(self, **kwargs)
+
+    def changeBasis(self, basis: np.ndarray) -> Ket:
+        return Operator(basis).hConj() @ self

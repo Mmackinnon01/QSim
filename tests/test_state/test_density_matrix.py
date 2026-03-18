@@ -55,3 +55,11 @@ def test_tensor():
     assert (s ^ s).state == pytest.approx(
         np.array([[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
     )
+
+
+def test_change_basis():
+    s = DensityMatrix(np.array([[1, 0], [0, 0]]))
+    print(sigmaX.eigenvectors)
+    assert s.changeBasis(sigmaX.eigenvectors).matrix == pytest.approx(
+        np.array([[0.5, -0.5], [-0.5, 0.5]])
+    )

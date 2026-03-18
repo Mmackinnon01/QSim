@@ -39,6 +39,8 @@ class Operator(OperatorLike):
 
     def __init__(self, matrix: np.ndarray):
         self.matrix = matrix
+        self._eigvals = None
+        self._eigvecs = None
 
     def __call__(self, t: Real) -> Operator:
         if isinstance(t, Real):
@@ -70,6 +72,13 @@ class Operator(OperatorLike):
         return NotImplemented
 
     def __add__(self, val: Any) -> Self:
+        if isinstance(val, Operator):
+            return type(self)(self.matrix + val.matrix)
+        elif isinstance(val, Number):
+            return type(self)(self.matrix + val)
+        return NotImplemented
+
+    def __radd__(self, val: Any) -> Self:
         if isinstance(val, Operator):
             return type(self)(self.matrix + val.matrix)
         elif isinstance(val, Number):
@@ -250,6 +259,21 @@ class Operator(OperatorLike):
         reduced = np.trace(reshaped, axis1=1, axis2=3)
 
         return Operator(reduced)
+
+    @property
+    def eigenvectors(self):
+        if self._eigvecs is None:
+            self._eigvals, self._eigvecs = np.linalg.eigh(self.matrix)
+        return self._eigvecs
+
+    @property
+    def eigenvalues(self):
+        if self._eigvals is None:
+            self._eigvals, self._eigvecs = np.linalg.eigh(self.matrix)
+        return self._eigvals
+
+    def changeBasis(self, basis: np.ndarray) -> Operator:
+        return Operator(basis).hConj() @ self @ Operator(basis)
 
 
 class TestOperator(Operator):
