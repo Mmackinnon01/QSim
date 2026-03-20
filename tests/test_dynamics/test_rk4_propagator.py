@@ -15,12 +15,12 @@ zObservable = Observable(sigmaZ.matrix)
 generator = GKSLGenerator(H=sigmaX, jumps=[sigmaPlus])
 unitary_dynamic = GKSLGenerator(H=sigmaX, jumps=[])
 
-propagator = RK4Propagator()
+propagator = RK4Propagator(tol=10e-12)
 
 
 def test_evolve_dm():
     assert pytest.approx(
-        propagator.evolve(unitary_dynamic, spin_down, t_final=PI / 2).matrix
+        propagator.evolve(unitary_dynamic, spin_down, t_final=PI / 2).matrix, abs=10e-10
     ) == np.array([[0, 0], [0, 1]])
 
 
@@ -29,7 +29,8 @@ def test_evolve_observable():
         pytest.approx(
             propagator.evolveOperator(
                 unitary_dynamic, zObservable, t_final=0, t0=PI / 2
-            ).matrix
+            ).matrix,
+            abs=10e-10,
         )
         == -zObservable.matrix
     )

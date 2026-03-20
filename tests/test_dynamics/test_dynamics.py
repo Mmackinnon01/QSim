@@ -27,7 +27,7 @@ dynamics = Dynamics(propagator, unitary_dynamic)
 
 def test_evolve_dm_two_step():
     assert pytest.approx(
-        dynamics.evolve(spin_down, ts=[PI / 4, PI / 2], t0=0).matrix
+        dynamics.evolve(spin_down, ts=[PI / 4, PI / 2], t0=0).matrix, abs=10e-8
     ) == np.array([[0, 0], [0, 1]])
 
 
@@ -43,13 +43,13 @@ def test_evolve_dm_callback():
 
     dynamics = Dynamics(propagator, unitary_dynamic, callbacks=[callback])
     dynamics.evolve(spin_down, ts=[PI / 2])
-    assert pytest.approx(state.matrix) == np.array([[0, 0], [0, 1]])
+    assert pytest.approx(state.matrix, abs=10e-8) == np.array([[0, 0], [0, 1]])
     assert t == PI / 2
 
 
 def test_evolve_operator_two_step():
     assert pytest.approx(
-        dynamics.evolve(spin_down, ts=[PI / 4, PI / 2], t0=0).matrix
+        dynamics.evolve(spin_down, ts=[PI / 4, PI / 2], t0=0).matrix, abs=10e-8
     ) == np.array([[0, 0], [0, 1]])
 
 

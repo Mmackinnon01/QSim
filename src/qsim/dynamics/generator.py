@@ -55,8 +55,12 @@ class GKSLGenerator(Generator):
     ) -> None:
         if jumps:
             self.jumps = jumps
+            self.anticommutator_components = [
+                jump.hConj() @ jump for jump in self.jumps
+            ]
         else:
             self.jumps = []
+            self.anticommutator_components = []
 
         self.H = H
 
@@ -129,9 +133,7 @@ class GKSLGenerator(Generator):
         H = self.H(t)
         jumps = [jump(t) for jump in self.jumps]
         hconj_jumps = [jump.hConj() for jump in jumps]
-        anticommutator_components = [
-            jump_conj @ jump for jump_conj, jump in zip(hconj_jumps, jumps)
-        ]
+        anticommutator_components = [c(t) for c in self.anticommutator_components]
         return H, jumps, hconj_jumps, anticommutator_components
 
 
@@ -180,12 +182,16 @@ class HamiltonianGenerator(Generator):
         )
 
     def unitaryOperator(self, t: Real, delta_t: Real) -> Operator:
-        if t not in self._unitary_cache:
-            self._unitary_cache[t] = Operator(expm(-1j * self.H(t).matrix * delta_t))
-        return self._unitary_cache[t]
+        # rounding to avoid machine precision errors in computing delta t resulting in multiple expm
+        delta_t = np.round(delta_t, 14)
+        if delta_t not in self._unitary_cache:
+            self._unitary_cache[delta_t] = Operator(
+                expm(-1j * self.H(t).matrix * delta_t)
+            )
+        return self._unitary_cache[delta_t]
 
 
-class LiouvillianGenerator:
+class LiouvillianGenerator(Generator):
 
     def __init__(self, L: OperatorLike) -> None:
         self.L = L

@@ -22,6 +22,7 @@ from typing import Any, Callable
 import numpy as np
 
 from qsim.dynamics.generator import Generator, HamiltonianGenerator
+from qsim.ensemble import HilbertSchmidt
 from qsim.lin_alg.operator import Operator
 from qsim.numeric_solvers.runge_kutta import rungeKutta
 from qsim.state.base import QuantumState, StateVisitor
@@ -41,16 +42,17 @@ class Propagator(ABC):
     - `evolve`: evolution of quantum states.
     - `evolveOperator`: evolution of operators.
     - 'callbacks': a list of callables that accept parameters (state, t)
+    - 'verbose': settings for level of information output
     """
 
-    def __init__(self, ts: Real = 0.001, callbacks: list[Callable] = None):
-        self.ts = ts
+    def __init__(self, callbacks: list[Callable] = None, verbose: int = 0):
         if callbacks is not None:
             if not isinstance(callbacks, list) or not callable(callbacks[0]):
                 raise TypeError(
                     f"Callbacks must be a list of type callable, not {type(callbacks)}"
                 )
         self._callbacks = callbacks
+        self._verbose = verbose
 
     @abstractmethod
     def evolve(
@@ -293,6 +295,18 @@ class RK4Propagator(Propagator, StateVisitor):
     - General non-unitary dynamics
     """
 
+    def __init__(
+        self,
+        ts: Real | None = None,
+        callbacks: list[Callable] = None,
+        tol: float = 10e-8,
+        verbose: int = 0,
+    ):
+        super().__init__(callbacks=callbacks, verbose=verbose)
+        self.ts = ts
+        self._ts_cache = {}
+        self._tol = tol
+
     def evolve(
         self, gen: Generator, state: QuantumState, t_final: Real, t0: Real = 0
     ) -> QuantumState:
@@ -313,13 +327,18 @@ class RK4Propagator(Propagator, StateVisitor):
         QuantumState
             The evolved state.
         """
+        if self.ts is None:
+            ts = self._getAutoTS(gen)
+        else:
+            ts = self.ts
+
         t = t0
 
         while t < t_final:
-            if t_final - t < self.ts:
+            if t_final - t < ts:
                 timestep = t_final - t
             else:
-                timestep = self.ts
+                timestep = ts
 
             state = rungeKutta(lambda t_n, s: gen.onState(s, t_n), t, timestep, state)
             t += timestep
@@ -347,13 +366,18 @@ class RK4Propagator(Propagator, StateVisitor):
         Operator
             The evolved operator at t_final.
         """
+        if self.ts is None:
+            ts = self._getAutoTS(gen)
+        else:
+            ts = self.ts
+
         t = t0
 
         while t > t_final:
-            if t - t_final < self.ts:
+            if t - t_final < ts:
                 timestep = t - t_final
             else:
-                timestep = self.ts
+                timestep = ts
 
             ## evaluation time of the function is inverted to facilitate backwards evolution while letting timestep be positive
             op = rungeKutta(lambda t_n, s: gen.onOperator(s, t - t_n), 0, timestep, op)
@@ -361,3 +385,45 @@ class RK4Propagator(Propagator, StateVisitor):
             self._callback(op, t)
 
         return op
+
+    def _getAutoTS(self, gen: Generator) -> float:
+        if gen not in self._ts_cache:
+            self._ts_cache[gen] = self._identifyTimeStep(gen)
+        return self._ts_cache[gen]
+
+    def _identifyTimeStep(self, gen: Generator) -> float:
+        ts = 0.01
+        t_final = 100 * ts
+        inaccurate = True
+
+        while inaccurate:
+            if self._verbose == 1:
+                print(f"Trialling RK4 propagtor with ts={ts}")
+            final_state = self._testStateEvolution(gen, ts, t_final)
+            new_state = self._testStateEvolution(gen, ts / 2, t_final)
+            if np.linalg.norm(final_state.matrix - new_state.matrix) < self._tol:
+                inaccurate = False
+                if self._verbose == 1:
+                    print(f"RK4 propagtor selected at ts={ts}")
+            else:
+                ts = ts / 2
+                t_final = t_final / 2
+                final_state = new_state
+
+        return ts
+
+    def _testStateEvolution(self, gen, ts, t_final):
+        state = HilbertSchmidt.generateDM(gen.dim, rng=np.random.default_rng(seed=42))
+
+        t = 0
+
+        while t < t_final:
+            if t_final - t < ts:
+                timestep = t_final - t
+            else:
+                timestep = ts
+
+            state = rungeKutta(lambda t_n, s: gen.onState(s, t_n), t, timestep, state)
+            t += timestep
+
+        return state

@@ -51,3 +51,19 @@ def test_measure_bra_subsystem():
     assert pytest.approx(d.detect(bell_state_ket.hConj())) == np.trace(
         bell_state_dm.matrix @ np.kron(np.eye(2), sigmaX.matrix)
     )
+
+
+def test_finite_statistics():
+    d = Detector(observable=sigmaX, dims=(2, 2), target_sites=(1,))
+    assert pytest.approx(
+        d.detect(bell_state_ket.hConj(), shots=10e10), abs=10e-6
+    ) == np.trace(bell_state_dm.matrix @ np.kron(np.eye(2), sigmaX.matrix))
+    assert pytest.approx(
+        d.detect(bell_state_ket @ bell_state_ket.hConj(), shots=10e10), abs=10e-6
+    ) == np.trace(bell_state_dm.matrix @ np.kron(np.eye(2), sigmaX.matrix))
+    assert pytest.approx(d.detect(bell_state_ket.hConj(), shots=10e5)) != np.trace(
+        bell_state_dm.matrix @ np.kron(np.eye(2), sigmaX.matrix)
+    )
+    assert pytest.approx(
+        d.detect(bell_state_ket @ bell_state_ket.hConj(), shots=10e5)
+    ) != np.trace(bell_state_dm.matrix @ np.kron(np.eye(2), sigmaX.matrix))
