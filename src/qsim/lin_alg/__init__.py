@@ -9,5 +9,5 @@ from .operator import (
     sigmaY,
     sigmaZ,
 )
-from .time_dependent_operator import TOperator
+from .time_dependent_operator import DiscreteTOperator, TOperator
 from .vector import Vector

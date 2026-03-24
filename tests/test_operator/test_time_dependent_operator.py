@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from qsim.lin_alg import Operator, TOperator, sigmaX, sigmaZ
+from qsim.lin_alg import DiscreteTOperator, Operator, TOperator, sigmaX, sigmaZ
 
 
 def discrete(t):
@@ -98,3 +98,51 @@ def test_change_basis():
             + sigmaZ.changeBasis(sigmaX.eigenvectors)
         ).matrix
     )
+
+
+def test_discrete_tdop_has_cache():
+    op = DiscreteTOperator(
+        sigmaZ + (lambda t: 0 if t < 1 else 1) * TOperator.from_static(sigmaX),
+        intervals=(1,),
+    )
+    eval_op = op(0)
+    assert pytest.approx(eval_op.matrix) == sigmaZ.matrix
+    assert (-1, 1) in op._cache
+
+
+def test_discrete_matmul():
+    op1 = DiscreteTOperator(
+        sigmaZ + (lambda t: 0 if t < 1 else 1) * TOperator.from_static(sigmaX),
+        intervals=(1,),
+    )
+    op2 = DiscreteTOperator(
+        sigmaZ + (lambda t: 0 if t < 2 else 1) * TOperator.from_static(sigmaX),
+        intervals=(2,),
+    )
+    op_matmul = op1 @ op2
+
+    assert op_matmul._intervals == (1, 2)
+    assert pytest.approx(op_matmul(0).matrix) == (op1(0) @ op2(0)).matrix
+    assert pytest.approx(op_matmul(1).matrix) == (op1(1) @ op2(1)).matrix
+    assert pytest.approx(op_matmul(2).matrix) == (op1(2) @ op2(2)).matrix
+    assert isinstance(op_matmul, DiscreteTOperator)
+    assert isinstance(op1 @ TOperator.from_static(sigmaX), TOperator)
+
+
+def test_discrete_tensor():
+    op1 = DiscreteTOperator(
+        sigmaZ + (lambda t: 0 if t < 1 else 1) * TOperator.from_static(sigmaX),
+        intervals=(1,),
+    )
+    op2 = DiscreteTOperator(
+        sigmaZ + (lambda t: 0 if t < 2 else 1) * TOperator.from_static(sigmaX),
+        intervals=(2,),
+    )
+    op_tensor = op1 ^ op2
+
+    assert op_tensor._intervals == (1, 2)
+    assert pytest.approx(op_tensor(0).matrix) == (op1(0) ^ op2(0)).matrix
+    assert pytest.approx(op_tensor(1).matrix) == (op1(1) ^ op2(1)).matrix
+    assert pytest.approx(op_tensor(2).matrix) == (op1(2) ^ op2(2)).matrix
+    assert isinstance(op_tensor, DiscreteTOperator)
+    assert isinstance(op1 ^ TOperator.from_static(sigmaX), TOperator)

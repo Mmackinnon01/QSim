@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import bisect
+from collections import OrderedDict
 from functools import reduce
 from numbers import Number, Real
 from tkinter import TOP
-from token import OP
-from turtle import TPen
 from typing import Any, Callable
 
 import numpy as np
@@ -55,7 +55,7 @@ class TOperator(OperatorLike):
                 )
         return NotImplemented
 
-    def __truediv__(self, val: Number) -> OperatorLike:
+    def __truediv__(self, val: Number) -> TOperator:
         if isinstance(val, Number):
             return TOperator([(f, op / val) for f, op in self._terms])
         return NotImplemented
@@ -180,6 +180,173 @@ class TOperator(OperatorLike):
 
     def changeBasis(self, basis: np.ndarray) -> TOperator:
         return TOperator([(f, op.changeBasis(basis)) for f, op in self._terms])
+
+    def partialTrace(
+        self, dims: tuple[int, ...], reduce_to_sites: tuple[int, ...]
+    ) -> OperatorLike:
+        return TOperator(
+            [(f, op.partialTrace(dims, reduce_to_sites)) for f, op in self._terms]
+        )
+
+
+class DiscreteTOperator(OperatorLike):
+
+    def __init__(self, op: TOperator, intervals: tuple, cache_length: int = 20) -> None:
+        self._op: TOperator = op
+        self._intervals: tuple = tuple(sorted(intervals))
+        self._cache: OrderedDict = OrderedDict()
+        self._cache_length: int = cache_length
+
+    def __call__(self, t: Real) -> Operator:
+        interval = self._getInterval(t)
+        if interval not in self._cache:
+            self._cache[interval] = self._op(t)
+            if len(self._cache) > self._cache_length:
+                self._cache.popitem(last=False)
+        return self._cache[interval]
+
+    def _getInterval(self, t: Real) -> tuple:
+        if t < self._intervals[0]:
+            return (-1, self._intervals[0])
+        elif t > self._intervals[-1]:
+            return (self._intervals[-1], -1)
+        else:
+            i = bisect.bisect_left(self._intervals, t)
+            return self._intervals[i : i + 2]
+
+    @property
+    def dim(self) -> int:
+        return self._op.dim
+
+    def __repr__(self) -> str:
+        return super().__repr__()
+
+    def __matmul__(self, matrix: OperatorLike) -> OperatorLike:
+        if isinstance(matrix, Operator):
+            return DiscreteTOperator(self._op @ matrix, self._intervals)
+        elif isinstance(matrix, TOperator):
+            return self._op @ matrix
+        elif isinstance(matrix, DiscreteTOperator):
+            return DiscreteTOperator(
+                self._op @ matrix._op,
+                intervals=tuple(sorted(set(self._intervals) | set(matrix._intervals))),
+            )
+
+    def __rmatmul__(self, matrix: OperatorLike) -> OperatorLike:
+        if isinstance(matrix, Operator):
+            return DiscreteTOperator(matrix @ self._op, self._intervals)
+        elif isinstance(matrix, TOperator):
+            return matrix @ self._op
+        elif isinstance(matrix, DiscreteTOperator):
+            return DiscreteTOperator(
+                matrix._op @ self._op,
+                intervals=tuple(sorted(set(self._intervals) | set(matrix._intervals))),
+            )
+
+    def __add__(self, val: Any) -> OperatorLike:
+        if isinstance(val, TOperator):
+            return self._op + val
+        elif isinstance(val, DiscreteTOperator):
+            return DiscreteTOperator(
+                val._op + self._op,
+                intervals=tuple(sorted(set(self._intervals) | set(val._intervals))),
+            )
+        else:
+            return DiscreteTOperator(self._op + val, self._intervals)
+
+    def __radd__(self, val: Any) -> OperatorLike:
+        return self.__add__(val)
+
+    def __sub__(self, val: Any) -> OperatorLike:
+        if isinstance(val, TOperator):
+            return self._op - val
+        elif isinstance(val, DiscreteTOperator):
+            return DiscreteTOperator(
+                val._op - self._op,
+                intervals=tuple(sorted(set(self._intervals) | set(val._intervals))),
+            )
+        else:
+            return DiscreteTOperator(self._op - val, self._intervals)
+
+    def __rsub__(self, val: Any) -> OperatorLike:
+        if isinstance(val, TOperator):
+            return val - self._op
+        elif isinstance(val, DiscreteTOperator):
+            return DiscreteTOperator(
+                self._op - val._op,
+                tuple(sorted(set(self._intervals) | set(val._intervals))),
+            )
+        else:
+            return DiscreteTOperator(val - self._op, self._intervals)
+
+    def __mul__(self, val: Number) -> DiscreteTOperator:
+        return DiscreteTOperator(self._op * val, self.intervals)
+
+    def __rmul__(self, val: Number) -> DiscreteTOperator:
+        return DiscreteTOperator(val * self._op, self.intervals)
+
+    def __truediv__(self, val: Number) -> DiscreteTOperator:
+        return DiscreteTOperator(self._op / val, self._intervals)
+
+    def __xor__(self, matrix: OperatorLike) -> OperatorLike:
+        if isinstance(matrix, TOperator):
+            return self._op ^ matrix
+        elif isinstance(matrix, DiscreteTOperator):
+            return DiscreteTOperator(
+                self._op ^ matrix._op,
+                tuple(sorted(set(self._intervals) | set(matrix._intervals))),
+            )
+        else:
+            return DiscreteTOperator(self._op ^ matrix, self._intervals)
+
+    def __rxor__(self, matrix):
+        if isinstance(matrix, TOperator):
+            return matrix ^ self._op
+        elif isinstance(matrix, DiscreteTOperator):
+            return DiscreteTOperator(
+                matrix._op ^ self._op,
+                tuple(sorted(set(self._intervals) | set(matrix._intervals))),
+            )
+        else:
+            return DiscreteTOperator(matrix ^ self._op, self._intervals)
+
+    def __neg__(self) -> DiscreteTOperator:
+        return DiscreteTOperator(-self._op, self._intervals)
+
+    def changeHilbertSpace(
+        self,
+        new_dims: tuple[int, ...],
+        send_to_sites: tuple[int, ...],
+        base_dims: tuple[int, ...] | None = None,
+    ) -> DiscreteTOperator:
+        return DiscreteTOperator(
+            self._op.changeHilbertSpace(new_dims, send_to_sites, base_dims),
+            self._intervals,
+        )
+
+    def hConj(self) -> DiscreteTOperator:
+        return DiscreteTOperator(self._op.hConj(), self._intervals)
+
+    def conj(self) -> DiscreteTOperator:
+        return DiscreteTOperator(self._op.conj(), self._intervals)
+
+    @property
+    def T(self) -> DiscreteTOperator:
+        return DiscreteTOperator(self._op.T, self._intervals)
+
+    def tensor(self, matrix: OperatorLike) -> OperatorLike:
+        return self ^ matrix
+
+    def commutator(self, matrix: OperatorLike) -> OperatorLike:
+        return self @ matrix - matrix @ self
+
+    def changeBasis(self, basis: np.ndarray) -> DiscreteTOperator:
+        return DiscreteTOperator(self._op.changeBasis(basis), self._intervals)
+
+    def partialTrace(
+        self, dims: tuple[int, ...], reduce_to_sites: tuple[int, ...]
+    ) -> DiscreteTOperator:
+        return DiscreteTOperator(self._op.partialTrace, self._intervals)
 
 
 def doesCallableReturnNumber(c: Callable):
