@@ -20,6 +20,7 @@ from numbers import Real
 from typing import Any, Callable
 
 import numpy as np
+from scipy.integrate import solve_ivp
 
 from qsim.dynamics.generator import Generator, HamiltonianGenerator
 from qsim.ensemble import HilbertSchmidt
@@ -427,3 +428,132 @@ class RK4Propagator(Propagator, StateVisitor):
             t += timestep
 
         return state
+
+
+class IVPPropagator(Propagator, StateVisitor):
+    """
+    Adaptive Runge–Kutta propagator.
+
+    This propagator numerically integrates a general time-dependent
+    generator using the classical RK45 scheme.
+
+    Suitable for:
+    - Time-dependent Hamiltonians
+    - GKSL master equations
+    - General non-unitary dynamics
+    """
+
+    def __init__(
+        self,
+        ts: Real | None = None,
+        callbacks: list[Callable] = None,
+        verbose: int = 0,
+        solver: str = "RK45",
+        atol: float = 1e-10,
+        rtol: float = 1e-8,
+    ):
+        super().__init__(callbacks=callbacks, verbose=verbose)
+        self.ts = ts
+        self.solver = solver
+        self.atol = atol
+        self.rtol = rtol
+
+    def evolve(
+        self, gen: Generator, state: QuantumState, t_final: Real, t0: Real = 0
+    ) -> QuantumState:
+        """
+        Evolve a quantum state using fourth-order Runge–Kutta integration.
+                Parameters
+        ----------
+        gen : Generator
+            Infinitesimal generator of the dynamics.
+        state : QuantumState
+            Initial state.
+        t_final : Real
+            Evolution duration.
+        t0 : Real, optional
+            Initial time (default is 0).
+        Returns
+        -------
+        QuantumState
+            The evolved state.
+        """
+        if self.ts is None:
+            ts = np.abs(t_final - t0)
+        else:
+            ts = self.ts
+        t = t0
+
+        def func(t, y):
+            rho = DensityMatrix(y.reshape((gen.dim, gen.dim)))
+            drho = gen.onState(rho, t)  # or gen(t, rho), depending on your API
+            return drho.matrix.reshape(-1)
+
+        while t < t_final:
+            y0 = state.matrix.reshape(-1)
+            sol = solve_ivp(
+                func,
+                t_span=(t, t + ts),
+                y0=y0,
+                method=self.solver,
+                atol=self.atol,
+                rtol=self.rtol,
+            )
+            state = DensityMatrix(sol.y[:, -1].reshape((gen.dim, gen.dim)))
+
+            t += ts
+            self._callback(state, t)
+
+        return state
+
+    def evolveOperator(
+        self, gen: Generator, op: Operator, t_final: Real, t0: Real = 0
+    ) -> Operator:
+        """
+        Evolve a quantum operator using fourth-order Runge–Kutta integration.
+                Parameters
+        ----------
+        gen : Generator
+            Infinitesimal generator of the dynamics.
+        op : Operator
+            Initial state.
+        t_final : Real
+            Evolution duration.
+        t0 : Real, optional
+            Initial time (default is 0).
+        Returns
+        -------
+        Operator
+            The evolved operator at t_final.
+        """
+
+        if self.ts is None:
+            ts = np.abs(t_final - t0)
+        else:
+            ts = self.ts
+
+        t = t0
+
+        def func(t, y):
+            op = Operator(y.reshape((gen.dim, gen.dim)))
+            dop = gen.onOperator(op, t)  # or gen(t, rho), depending on your API
+            return dop.matrix.reshape(-1)
+
+        while t > t_final:
+            op = Operator(
+                solve_ivp(
+                    func,
+                    t_span=(t, t - ts),
+                    y0=op.matrix.reshape(-1),
+                    method=self.solver,
+                    atol=self.atol,
+                    rtol=self.rtol,
+                )
+                .y[:, -1]
+                .reshape((gen.dim, gen.dim))
+            )
+
+            t -= ts
+            self._callback(op, t)
+
+        return op

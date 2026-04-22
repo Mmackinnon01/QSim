@@ -3,15 +3,15 @@ from re import S
 from typing import Dict, Self, Set
 
 from qsim.state.base import QuantumState
-from qsim.state.detector import Detector
+from qsim.state.detector import DetectorInterface
 
 
 class Logger:
 
     def __init__(
-        self, detectors: list[Detector] | None = None, log_state=False
+        self, detectors: list[DetectorInterface] | None = None, log_state=False
     ) -> None:
-        self._detectors: list[Detector] = detectors if detectors else []
+        self._detectors: list[DetectorInterface] = detectors if detectors else []
         self._log_state: bool = log_state
         self.clear()
 
@@ -31,6 +31,6 @@ class Logger:
     def clear(self):
         self.times: Set[Real] = set()
         self.state_log: Dict[Real, QuantumState] = {}
-        self.observable_log: Dict[Detector, Dict[Real, Real]] = {
+        self.observable_log: Dict[DetectorInterface, Dict[Real, Real]] = {
             d: {} for d in self._detectors
         }

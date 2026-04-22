@@ -6,15 +6,15 @@ import pytest
 from qsim.lin_alg import sigmaX, sigmaZ
 from qsim.logging import Logger
 from qsim.state.density_matrix import DensityMatrix
-from qsim.state.detector import Detector
+from qsim.state.detector import ObservableDetector
 from qsim.state.wave_vector import Ket
 
 spin_down_dm = DensityMatrix(np.array([[1, 0], [0, 0]]))
 spin_up_dm = DensityMatrix(np.array([[0, 0], [0, 1]]))
 spin_down_ket = Ket(np.array([1, 0]))
 
-det1 = Detector(sigmaX)
-det2 = Detector(sigmaZ)
+det1 = ObservableDetector(sigmaX)
+det2 = ObservableDetector(sigmaZ)
 
 
 def test_log_state_only():
