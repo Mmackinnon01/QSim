@@ -275,7 +275,9 @@ class LiouvillianGenerator(Generator):
             if biorthonomalise:
                 for i, cond in enumerate(np.isclose(eigs, 0, rtol=10e-10)):
                     if cond:
-                        rv[i] = rv[i] / unvectorise(rv[i]).trace()
+                        trace = unvectorise(rv[i]).trace()
+                        if trace > 10e-10:
+                            rv[i] = rv[i] / trace
                 lv = [left / (left @ right) for left, right in zip(lv, rv)]
             self._spectral_cache[t] = (eigs, lv, rv)
         return self._spectral_cache[t]
