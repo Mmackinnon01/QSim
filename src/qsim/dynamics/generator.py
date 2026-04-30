@@ -12,7 +12,7 @@ from scipy.linalg import eig, expm
 
 from qsim.lin_alg import I, Operator, Vector
 from qsim.lin_alg.operator import OperatorLike
-from qsim.lin_alg.transforms import unvectorise
+from qsim.lin_alg.transforms import unvectorise, vectorise
 from qsim.state import Bra, DensityMatrix, Ket, QuantumState, StateVisitor
 
 
@@ -263,7 +263,7 @@ class LiouvillianGenerator(Generator):
         return self._exponential_cache[t]
 
     def spectralDecomposition(
-        self, t: Real = 0, biorthonomalise: bool = False
+        self, t: Real = 0, biorthonomalise: bool = True
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         if t not in self._spectral_cache:
             eigs, lv, rv = eig(self.L(t).matrix, left=True)
@@ -290,3 +290,17 @@ class LiouvillianGenerator(Generator):
         ax.set_xlabel(r"Re$(\lambda_i)$")
         ax.set_ylabel(r"Im$(\lambda_i)$")
         return ax
+
+    def steadyState(self, t: Real = 0, rho0: DensityMatrix | None = None):
+        eigs, lv, rv = self.spectralDecomposition(t, biorthonomalise=True)
+
+        if sum(np.abs(eigs) < 10e-15) > 1:
+            return DensityMatrix(sum(
+                [
+                    l @ vectorise(rho0) * unvectorise(r)
+                    for eig, l, r in zip(eigs, lv, rv)
+                    if np.abs(eig) < 10e-15
+                ]
+            ))
+        else:
+            return DensityMatrix(unvectorise(rv[0]))
