@@ -4,7 +4,6 @@ import bisect
 from collections import OrderedDict
 from functools import reduce
 from numbers import Number, Real
-from tkinter import TOP
 from typing import Any, Callable
 
 import numpy as np
@@ -21,8 +20,7 @@ class TOperator(OperatorLike):
             raise ValueError("TOperator can't be instantiated with an empty terms list")
         self._terms = []
         for term in terms:
-            if not np.allclose(term[1].matrix, 0):
-                self._terms.append(term)
+            self._terms.append(term)
 
     def __call__(self, t: Real) -> Operator:
         if isinstance(t, Real):
@@ -354,6 +352,6 @@ def doesCallableReturnNumber(c: Callable):
         output = c(0)
         if isinstance(output, Number):
             return True
-    except Exception as e:
+    except Exception:
         pass
     return False
