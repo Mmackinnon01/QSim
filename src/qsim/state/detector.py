@@ -3,7 +3,6 @@ from functools import reduce
 from numbers import Real
 
 import numpy as np
-from numpy.random import f
 
 from qsim.lin_alg.observable import Observable
 from qsim.lin_alg.operator import I, Operator
@@ -62,6 +61,7 @@ class DetectorInterface(ABC, StateVisitor):
     ) -> Real:
         if not np.isclose(sum(probs), 1):
             raise ValueError("The probabilities must sum to 1.")
+        probs[(probs < 0) & (probs > -10e-10)] = 0
         return np.real(
             np.sum(
                 [
@@ -150,10 +150,10 @@ class POVMDetector(DetectorInterface):
 
     def _finiteStatisticsDensity(self, rho: DensityMatrix, shots: int) -> Real:
         return self._finiteStatistics(
-            [(op @ rho).trace().real for op in self._povm], self._outcomes, shots
+            np.array([(op @ rho).trace().real for op in self._povm]), self._outcomes, shots
         )
 
     def _finiteStatisticsKet(self, psi: Ket, shots: int) -> Real:
         return self._finiteStatistics(
-            [(psi.hConj() @ op @ psi).real for op in self._povm], self._outcomes, shots
+            np.array([(psi.hConj() @ op @ psi).real for op in self._povm]), self._outcomes, shots
         )

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from functools import reduce
-from multiprocessing import Value
 from numbers import Real
 from typing import Self
 

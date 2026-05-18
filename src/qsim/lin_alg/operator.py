@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from math import prod
 from numbers import Number, Real
-from token import OP
 from typing import Any, Protocol, Self
 
 import numpy as np
