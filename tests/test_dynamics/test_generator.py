@@ -26,13 +26,13 @@ unitary_dynamic = GKSLGenerator(H=sigmaX, jumps=[])
 
 
 def test_derivative_dm():
-    assert pytest.approx(dynamic.onState(spin_down).matrix) == np.array(
+    assert pytest.approx(dynamic.onState(spin_down)(spin_down.matrix)) == np.array(
         [[-1, 1j], [-1j, 1]]
     )
 
 
 def test_derivative_observable():
-    assert pytest.approx(dynamic.onOperator(zObservable).matrix) == np.array(
+    assert pytest.approx(dynamic.onOperator(zObservable)(zObservable.matrix)) == np.array(
         [[-2, -2j], [2j, 0]]
     )
 
@@ -96,7 +96,7 @@ def test_derivative(composite, manual_composite_H):
         ]
     )
     assert (
-        pytest.approx(composite.onState(dual_spin_down).matrix, abs=10**-10)
+        pytest.approx(composite.onState(dual_spin_down)(dual_spin_down.matrix), abs=10**-10)
         == expected_unitary + expected_dissipative
     )
 
@@ -114,7 +114,7 @@ def test_observable_derivative(composite, manual_composite_H):
         ]
     )
     assert (
-        pytest.approx(composite.onOperator(sigmaZ.tensor(sigmaZ)).matrix)
+        pytest.approx(composite.onOperator(sigmaZ.tensor(sigmaZ))(sigmaZ.tensor(sigmaZ).matrix))
         == expected_unitary + expected_dissipative
     )
 
@@ -137,24 +137,24 @@ PI = math.pi
 
 
 def test_generator_density_matrix():
-    H = xSpinDynamics.onState(spinUpDensityMatrix)
+    H = xSpinDynamics.onState(spinUpDensityMatrix)(spinUpDensityMatrix.matrix)
     assert (
-        pytest.approx(H.matrix) == -1j * sigmaX.commutator(spinUpDensityMatrix).matrix
+        pytest.approx(H) == -1j * sigmaX.commutator(spinUpDensityMatrix).matrix
     )
 
 
 def test_generator_ket():
-    H = xSpinDynamics.onState(spinUpKet).matrix
+    H = xSpinDynamics.onState(spinUpKet)(spinUpKet.matrix)
     assert pytest.approx(H) == -1j * (sigmaX @ spinUpKet).matrix
 
 
 def test_generator_bra():
-    H = xSpinDynamics.onState(spinUpBra).matrix
+    H = xSpinDynamics.onState(spinUpBra)(spinUpBra.matrix)
     assert pytest.approx(H) == 1j * (spinUpBra @ sigmaX.hConj()).matrix
 
 
 def test_evolve_operator():
-    H = xSpinDynamics.onOperator(zObservable).matrix
+    H = xSpinDynamics.onOperator(zObservable)(zObservable.matrix)
     assert pytest.approx(H) == 1j * sigmaX.commutator(zObservable).matrix
 
 
@@ -209,9 +209,9 @@ def test_add_dynamics(composite_hamiltonian):
 
 
 def test_generator_separable_dynamics_ket(simple_composite_hamiltonian):
-    g = simple_composite_hamiltonian.onState(bell_state_ket)
+    g = simple_composite_hamiltonian.onState(bell_state_ket)(bell_state_ket.matrix)
     assert (
-        pytest.approx(g.matrix)
+        pytest.approx(g)
         == -1j
         * (np.kron(np.eye(2), sigmaY.matrix) + np.kron(sigmaX.matrix, np.eye(2)))
         @ bell_state_ket.matrix
@@ -219,17 +219,17 @@ def test_generator_separable_dynamics_ket(simple_composite_hamiltonian):
 
 
 def test_evolve_density_matrix(composite_hamiltonian, manual_composite_H):
-    evolved_state = composite_hamiltonian.onState(bell_state_dm)
-    assert pytest.approx(evolved_state.state) == -1j * (
+    evolved_state = composite_hamiltonian.onState(bell_state_dm)(bell_state_dm.matrix)
+    assert pytest.approx(evolved_state) == -1j * (
         manual_composite_H @ bell_state_dm.state
         - bell_state_dm.state @ manual_composite_H
     )
 
 
 def test_evolve_ket(composite_hamiltonian, manual_composite_H):
-    evolved_state = composite_hamiltonian.onState(bell_state_ket)
+    evolved_state = composite_hamiltonian.onState(bell_state_ket)(bell_state_ket.matrix)
     assert (
-        pytest.approx(evolved_state.state)
+        pytest.approx(evolved_state)
         == -1j * manual_composite_H @ bell_state_ket.state
     )
 
@@ -243,7 +243,7 @@ def test_time_dependent_dynamics(time_dependent_hamiltonian_generator):
     H = sigmaX + np.sin(3) * sigmaY
     assert (
         pytest.approx(
-            time_dependent_hamiltonian_generator.onState(spinUpDensityMatrix, 3).state
+            time_dependent_hamiltonian_generator.onState(spinUpDensityMatrix)(spinUpDensityMatrix.matrix, 3)
         )
         == -1j * H.commutator(spinUpDensityMatrix).state
     )

@@ -1,9 +1,11 @@
+import numba
 import numpy as np
 import pytest
 
 from qsim.lin_alg import DiscreteTOperator, Operator, TOperator, sigmaX, sigmaZ
 
 
+@numba.njit
 def discrete(t):
     return -1 if t < 2 else 1
 
@@ -14,7 +16,10 @@ def continuous(t):
 
 @pytest.fixture
 def discrete_time_dependent():
-    return TOperator([(lambda t: 1, sigmaX), (discrete, sigmaZ)])
+    @numba.njit
+    def control(t):
+        return 1
+    return TOperator([(control, sigmaX), (discrete, sigmaZ)])
 
 
 @pytest.fixture
@@ -42,7 +47,11 @@ def test_discrete(discrete_time_dependent):
     assert discrete_time_dependent(10) == sigmaX + sigmaZ
 
 
-def test_compoosition(
+def test_compile_operator(discrete_time_dependent):
+    op = discrete_time_dependent.compile()
+    assert pytest.approx(op(0)) == (sigmaX - sigmaZ).matrix
+
+def test_composition(
     discrete_time_dependent, discrete_time_dependent_composed, all_operations
 ):
     assert discrete_time_dependent(0) == discrete_time_dependent_composed(0)
@@ -100,6 +109,7 @@ def test_change_basis():
     )
 
 
+
 def test_discrete_tdop_has_cache():
     op = DiscreteTOperator(
         sigmaZ + (lambda t: 0 if t < 1 else 1) * TOperator.from_static(sigmaX),
@@ -146,3 +156,14 @@ def test_discrete_tensor():
     assert pytest.approx(op_tensor(2).matrix) == (op1(2) ^ op2(2)).matrix
     assert isinstance(op_tensor, DiscreteTOperator)
     assert isinstance(op1 ^ TOperator.from_static(sigmaX), TOperator)
+
+def test_compile_discrete_operator():
+    @numba.njit
+    def control(t):
+        return 0 if t < 1 else 1
+    op1 = DiscreteTOperator(
+        sigmaZ + control * TOperator.from_static(sigmaX),
+        intervals=(1,),
+    )
+    op = op1.compile()
+    assert pytest.approx(op(0)) == sigmaZ.matrix

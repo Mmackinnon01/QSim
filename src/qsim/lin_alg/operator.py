@@ -3,6 +3,7 @@ from __future__ import annotations
 from numbers import Number, Real
 from typing import Any, Protocol, Self
 
+import numba as nb
 import numpy as np
 
 
@@ -36,7 +37,7 @@ class OperatorLike(Protocol):
 class Operator(OperatorLike):
 
     def __init__(self, matrix: np.ndarray):
-        self.matrix = matrix
+        self.matrix = matrix.astype(np.complex128)
         self._eigvals = None
         self._eigvecs = None
 
@@ -273,6 +274,9 @@ class Operator(OperatorLike):
     def changeBasis(self, basis: np.ndarray) -> Operator:
         return Operator(basis).hConj() @ self @ Operator(basis)
 
+    def compile(self):
+        mat = self.matrix
+        return nb.njit(lambda t, m=mat: m)
 
 class TestOperator(Operator):
 

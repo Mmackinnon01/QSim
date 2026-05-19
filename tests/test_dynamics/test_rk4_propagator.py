@@ -5,7 +5,7 @@ import pytest
 
 from qsim.dynamics import GKSLGenerator, RK4Propagator
 from qsim.lin_alg import Observable, sigmaPlus, sigmaX, sigmaZ
-from qsim.state import DensityMatrix, Ket
+from qsim.state import DensityMatrix
 
 PI = math.pi
 

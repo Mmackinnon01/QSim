@@ -6,6 +6,7 @@ from numbers import Real
 from typing import Self
 
 import matplotlib.pyplot as plt
+import numba as nb
 import numpy as np
 from scipy.linalg import eig, expm
 
@@ -13,6 +14,31 @@ from qsim.lin_alg import I, Operator, Vector
 from qsim.lin_alg.operator import OperatorLike
 from qsim.lin_alg.transforms import unvectorise, vectorise
 from qsim.state import Bra, DensityMatrix, Ket, QuantumState, StateVisitor
+
+
+@nb.njit
+def _fast_lindblad_heisenberg(op_arr: np.ndarray, H_arr: np.ndarray, jumps_arr: np.ndarray) -> np.ndarray:
+    out = 1j * (H_arr @ op_arr - op_arr @ H_arr)  # +1j
+    for i in range(len(jumps_arr)):
+        L = jumps_arr[i]
+        L_dag = L.conj().T
+        L_dag_L = L_dag @ L
+        
+        # L_dag @ A @ L
+        out += (L_dag @ op_arr @ L) - 0.5 * (L_dag_L @ op_arr + op_arr @ L_dag_L)
+    return out
+
+@nb.njit
+def _fast_lindblad_schrodinger(rho_arr: np.ndarray, H_arr: np.ndarray, jumps_arr: np.ndarray) -> np.ndarray:
+    out = -1j * (H_arr @ rho_arr - rho_arr @ H_arr) # -1j
+    for i in range(len(jumps_arr)):
+        L = jumps_arr[i]
+        L_dag = L.conj().T
+        L_dag_L = L_dag @ L
+        
+        # L @ rho @ L_dag
+        out += (L @ rho_arr @ L_dag) - 0.5 * (L_dag_L @ rho_arr + rho_arr @ L_dag_L)
+    return out
 
 
 class Generator(ABC, StateVisitor):
@@ -36,8 +62,8 @@ class Generator(ABC, StateVisitor):
     @abstractmethod
     def onOperator(self, op: Operator, t: Real = 0) -> Operator: ...
 
-    def onState(self, state: QuantumState, t: Real = 0) -> QuantumState:
-        return state.accept(self, t=t)
+    def onState(self, state: QuantumState) -> QuantumState:
+        return state.accept(self)
 
     @abstractmethod
     def changeHilbertSpace(
@@ -94,38 +120,43 @@ class GKSLGenerator(Generator):
         ]
         return GKSLGenerator(embedded_H, embedded_jumps)
 
-    def onOperator(self, op: Operator, t: Real = 0) -> Operator:
-        H, jumps, hJumps, ac_components = self._evaluateOperators(t)
-        unitary_component = 1j * (H @ op - op @ H)
-        if not jumps:
-            return unitary_component
-        dissipative_component = reduce(
-            lambda x, y: x + y,
-            [
-                L_dag @ op @ L - 0.5 * (L2 @ op + op @ L2)
-                for L, L_dag, L2 in zip(jumps, hJumps, ac_components)
-            ],
-        )
-        return unitary_component + dissipative_component
 
-    def visitDensityMatrix(self, rho: DensityMatrix, t: Real) -> DensityMatrix:
-        H, jumps, hJumps, ac_components = self._evaluateOperators(t)
-        unitary_component = -1j * (H @ rho - rho @ H)
-        if not jumps:
-            return unitary_component
-        dissipative_component = reduce(
-            lambda x, y: x + y,
-            [
-                L @ rho @ L_dag - 0.5 * (L2 @ rho + rho @ L2)
-                for L, L_dag, L2 in zip(jumps, hJumps, ac_components)
-            ],
-        )
-        return unitary_component + dissipative_component
+    def _build_generator(self, is_density_matrix: bool):
+        """Shared setup logic to avoid code duplication."""
+        get_H = self.H.compile()
+        get_jumps = [jump.compile() for jump in self.jumps]
+        
+        # Pick the correct machine-code backend just ONCE during setup
+        backend = _fast_lindblad_schrodinger if is_density_matrix else _fast_lindblad_heisenberg
 
-    def visitBra(self, psi: Bra, t: float) -> TypeError:
+        def generator(arr: np.ndarray, t: float = 0.0) -> np.ndarray:
+            # Bulletproof type checking (fixes the BLAS integer crash)
+            if arr.dtype != np.complex128:
+                arr = arr.astype(np.complex128)
+                
+            H_t = get_H(t)
+            
+            if len(get_jumps) > 0:
+                jumps_t = np.array([j(t) for j in get_jumps], dtype=np.complex128)
+            else:
+                jumps_t = np.zeros((0, H_t.shape[0], H_t.shape[1]), dtype=np.complex128)
+                
+            # Call whichever backend was selected during setup
+            return backend(arr, H_t, jumps_t)
+            
+        return generator
+
+
+    def onOperator(self, op) -> callable:
+        return self._build_generator(is_density_matrix=False)
+
+    def visitDensityMatrix(self, rho) -> callable:
+        return self._build_generator(is_density_matrix=True)
+
+    def visitBra(self, psi: Bra) -> TypeError:
         raise TypeError("GKSL master equation not valid for wavevector input")
 
-    def visitKet(self, psi: Ket, t: float) -> TypeError:
+    def visitKet(self, psi: Ket) -> TypeError:
         raise TypeError("GKSL master equation not valid for wavevector input")
 
     def _evaluateOperators(self, t: Real):
@@ -156,17 +187,36 @@ class HamiltonianGenerator(Generator):
     def dim(self) -> int:
         return self.H.dim
 
-    def visitBra(self, psi: Bra, t: Real) -> Bra:
-        return 1j * psi @ self.H(t).hConj()
+    def visitBra(self, psi: Bra) -> Bra:
+        H_t = self.H.compile()
 
-    def visitKet(self, psi: Ket, t: Real) -> Ket:
-        return -1j * self.H(t) @ psi
+        def f(psi: np.ndarray, t: float = 0)->np.ndarray:
+            return 1j * psi @ H_t(t)
+        return f
 
-    def visitDensityMatrix(self, rho: DensityMatrix, t: Real) -> DensityMatrix:
-        return -1j * self.H(t).commutator(rho)
 
-    def onOperator(self, op: Operator, t: float = 0) -> Operator:
-        return 1j * self.H(t).commutator(op)
+    def visitKet(self, psi: Ket) -> Ket:
+        H_t = self.H.compile()
+
+        def f(psi: np.ndarray, t: float = 0)->np.ndarray:
+            return -1j * H_t(t) @ psi
+        return f
+
+    def visitDensityMatrix(self, rho: DensityMatrix) -> DensityMatrix:
+        H_t = self.H.compile()
+
+        def f(rho: np.ndarray, t: float = 0)->np.ndarray:
+            H_eval = H_t(t)
+            return -1j * (H_eval @ rho - rho @ H_eval)
+        return f
+
+    def onOperator(self, op: Operator) -> Operator:
+        H_t = self.H.compile()
+
+        def f(op: np.ndarray, t: float = 0)->np.ndarray:
+            H_eval = H_t(t)
+            return 1j * (H_eval @ op - op @ H_eval)
+        return f
 
     def changeHilbertSpace(
         self,
@@ -232,16 +282,20 @@ class LiouvillianGenerator(Generator):
     def dim(self) -> int:
         return self.L.dim
 
-    def visitBra(self, psi: Bra, t: Real) -> Bra:
+    def visitBra(self, psi: Bra) -> Bra:
         raise TypeError("Superoperator generator does not work on Bra")
 
-    def visitKet(self, psi: Ket, t: Real) -> Ket:
-        return self.L(t) @ psi
+    def visitKet(self, psi: Ket) -> Ket:
+        L_t = self.L.compile()
 
-    def visitDensityMatrix(self, rho: DensityMatrix, t: Real) -> DensityMatrix:
+        def f(psi: np.ndarray, t: float = 0)->np.ndarray:
+            return L_t(t) @ psi
+        return f
+
+    def visitDensityMatrix(self, rho: DensityMatrix) -> DensityMatrix:
         raise TypeError("Superoperator generator does not work on Density Matrices")
 
-    def onOperator(self, op: Operator, t: float = 0) -> Operator:
+    def onOperator(self, op: Operator) -> Operator:
         raise TypeError("Superoperator generator does not work on Operators")
 
     def changeHilbertSpace(

@@ -335,17 +335,21 @@ class RK4Propagator(Propagator, StateVisitor):
 
         t = t0
 
+        state_type = type(state)
+        gen_func = gen.onState(state)
+        state_array = state.matrix
+
         while t < t_final:
             if t_final - t < ts:
                 timestep = t_final - t
             else:
                 timestep = ts
 
-            state = rungeKutta(lambda t_n, s: gen.onState(s, t_n), t, timestep, state)
+            state_array = rungeKutta(lambda t_n, s: gen_func(s, t_n), t, timestep, state_array)
             t += timestep
-            self._callback(state, t)
+            self._callback(state_type(state_array), t)
 
-        return state
+        return state_type(state_array)
 
     def evolveOperator(
         self, gen: Generator, op: Operator, t_final: Real, t0: Real = 0
@@ -372,6 +376,9 @@ class RK4Propagator(Propagator, StateVisitor):
         else:
             ts = self.ts
 
+        gen_func = gen.onOperator(op)
+        op_array = op.matrix
+
         t = t0
 
         while t > t_final:
@@ -381,11 +388,11 @@ class RK4Propagator(Propagator, StateVisitor):
                 timestep = ts
 
             ## evaluation time of the function is inverted to facilitate backwards evolution while letting timestep be positive
-            op = rungeKutta(lambda t_n, s: gen.onOperator(s, t - t_n), 0, timestep, op)
+            op_array = rungeKutta(lambda t_n, s: gen_func(s, t - t_n), 0, timestep, op_array)
             t -= timestep
-            self._callback(op, t)
+            self._callback(Operator(op_array), t)
 
-        return op
+        return Operator(op_array)
 
     def _getAutoTS(self, gen: Generator) -> float:
         if gen not in self._ts_cache:
@@ -416,6 +423,10 @@ class RK4Propagator(Propagator, StateVisitor):
     def _testStateEvolution(self, gen, ts, t_final):
         state = HilbertSchmidt.generateDM(gen.dim, rng=np.random.default_rng(seed=42))
 
+        state_type = type(state)
+        gen_func = gen.onState(state)
+        state_array = state.matrix
+
         t = 0
 
         while t < t_final:
@@ -424,10 +435,10 @@ class RK4Propagator(Propagator, StateVisitor):
             else:
                 timestep = ts
 
-            state = rungeKutta(lambda t_n, s: gen.onState(s, t_n), t, timestep, state)
+            state_array = rungeKutta(lambda t_n, s: gen_func(s, t_n), t, timestep, state_array)
             t += timestep
 
-        return state
+        return state_type(state_array)
 
 
 class IVPPropagator(Propagator, StateVisitor):
