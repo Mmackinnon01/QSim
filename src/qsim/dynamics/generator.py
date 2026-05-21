@@ -49,7 +49,6 @@ def _fast_lindblad_schrodinger(rho_arr: np.ndarray, op_arr: np.ndarray, out: np.
         out += (L @ rho_arr @ L_dag) - 0.5 * (L_dag_L @ rho_arr + rho_arr @ L_dag_L)
 
 
-
 class Generator(ABC, StateVisitor):
 
     def __init__(self):
@@ -140,7 +139,20 @@ class GKSLGenerator(Generator):
         jumps = [jump.compile() for jump in self.jumps]
 
         def inputs_func(ts):
-            return np.stack([H_t(ts)] + [jump(ts) for jump in jumps], axis=1)
+            # 1. Evaluate the Hamiltonian to get the shape and data
+            H_eval = H_t(ts)
+            T, N, _ = H_eval.shape  # T is time steps, N is matrix dimension
+            K = 1 + len(jumps)      # Total number of operators
+
+            # 2. Allocate the final memory block ONCE
+            # (Using axis=1 means shape should be (T, K, N, N) so op_arr[i] gives operators for step i)
+            op_arrays = np.empty((T, K, N, N), dtype=np.complex128)
+
+            # 3. Fill the slots directly
+            op_arrays[:, 0] = H_eval
+            for i, jump in enumerate(jumps):
+                op_arrays[:, i + 1] = jump(ts)
+            return op_arrays
             
         return backend, inputs_func
 
@@ -167,6 +179,23 @@ class GKSLGenerator(Generator):
         anticommutator_components = [c(t) for c in self.anticommutator_components]
         return H, jumps, hconj_jumps, anticommutator_components
     
+
+@nb.njit(fastmath=True)
+def hamiltonian_bra(psi_arr: np.ndarray, op_arr: np.ndarray, out: np.ndarray)->np.ndarray:
+    out[:] = 1j * psi_arr @ op_arr
+
+@nb.njit(fastmath=True)
+def hamiltonian_ket(psi_arr: np.ndarray, op_arr: np.ndarray, out: np.ndarray)->np.ndarray:
+    out[:] = -1j * op_arr @ psi_arr
+
+@nb.njit(fastmath=True)
+def hamiltonian_dm(psi_arr: np.ndarray, op_arr: np.ndarray, out: np.ndarray)->np.ndarray:
+    out[:] = -1j * (op_arr @ psi_arr - psi_arr @ op_arr)
+
+@nb.njit(fastmath=True)
+def hamiltonian_op(psi_arr: np.ndarray, op_arr: np.ndarray, out: np.ndarray)->np.ndarray:
+    out[:] = 1j * (op_arr @ psi_arr - psi_arr @ op_arr)
+
 
 class HamiltonianGenerator(Generator):
 
@@ -195,11 +224,7 @@ class HamiltonianGenerator(Generator):
             def inputs_func(ts):
                 return H_t(ts)
 
-            @nb.njit
-            def f(psi_arr: np.ndarray, op_arr: np.ndarray, out: np.ndarray)->np.ndarray:
-                out[:] = 1j * psi_arr @ op_arr
-
-            self._compiled_fns['bra'] = (f, inputs_func)
+            self._compiled_fns['bra'] = (hamiltonian_bra, inputs_func)
         return self._compiled_fns['bra']
 
     def visitKet(self, psi: Ket) -> Ket:
@@ -208,11 +233,7 @@ class HamiltonianGenerator(Generator):
             def inputs_func(ts):
                 return H_t(ts)
 
-            @nb.njit
-            def f(psi_arr: np.ndarray, op_arr: np.ndarray, out: np.ndarray)->np.ndarray:
-                out[:] = -1j * op_arr @ psi_arr
-
-            self._compiled_fns['ket'] =  (f, inputs_func)
+            self._compiled_fns['ket'] =  (hamiltonian_ket, inputs_func)
         return self._compiled_fns['ket']
 
     def visitDensityMatrix(self, rho: DensityMatrix) -> DensityMatrix:
@@ -221,11 +242,7 @@ class HamiltonianGenerator(Generator):
             def inputs_func(ts):
                 return H_t(ts)
 
-            @nb.njit
-            def f(psi_arr: np.ndarray, op_arr: np.ndarray, out: np.ndarray)->np.ndarray:
-                out[:] = -1j * (op_arr @ psi_arr - psi_arr @ op_arr)
-
-            self._compiled_fns['dm'] = (f, inputs_func)
+            self._compiled_fns['dm'] = (hamiltonian_dm, inputs_func)
         return self._compiled_fns['dm']
 
     def onOperator(self, op: Operator) -> Operator:
@@ -234,10 +251,7 @@ class HamiltonianGenerator(Generator):
             def inputs_func(ts):
                 return H_t(ts)
 
-            @nb.njit
-            def f(psi_arr: np.ndarray, op_arr: np.ndarray, out: np.ndarray)->np.ndarray:
-                out[:] = 1j * (op_arr @ psi_arr - psi_arr @ op_arr)
-            self._compiled_fns['op'] = (f, inputs_func)
+            self._compiled_fns['op'] = (hamiltonian_op, inputs_func)
         return self._compiled_fns['op']
 
     def changeHilbertSpace(
@@ -260,6 +274,10 @@ class HamiltonianGenerator(Generator):
                 expm(-1j * self.H(t).matrix * delta_t)
             )
         return self._unitary_cache[delta_t]
+
+@nb.njit(fastmath=True)
+def liouvillian_generator(psi_arr: np.ndarray, op_arr: np.ndarray, out: np.ndarray)->np.ndarray:
+    out[:] = op_arr @ psi_arr
 
 
 class LiouvillianGenerator(Generator):
@@ -314,11 +332,7 @@ class LiouvillianGenerator(Generator):
             def inputs_func(ts):
                 return L_t(ts)
 
-            @nb.njit
-            def f(psi_arr: np.ndarray, op_arr: np.ndarray, out: np.ndarray)->np.ndarray:
-                out[:] = op_arr @ psi_arr
-
-            self._compiled_fns['ket'] =  (f, inputs_func)
+            self._compiled_fns['ket'] =  (liouvillian_generator, inputs_func)
         return self._compiled_fns['ket']
 
     def visitDensityMatrix(self, rho: DensityMatrix) -> DensityMatrix:

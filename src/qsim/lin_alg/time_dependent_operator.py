@@ -251,27 +251,27 @@ class TOperator(OperatorLike):
 
             def evaluated_op(ts):
                 n_steps = len(ts)
-                dim = matrices.shape[1]
-                out = np.zeros((n_steps, dim, dim), dtype=np.complex128)
                 
+                # 1. Pre-allocate a 2D coefficient matrix: shape (n_terms, n_steps)
+                C = np.ones((n_terms, n_steps), dtype=np.complex128)
+                
+                # 2. Vectorized Evaluation: Pass the entire 'ts' array at once
                 for i in range(n_terms):
-                    # 1. Start with a list of 1.0s for the coefficients
-                    partial_list = [1.0 + 0.0j] * n_steps
-                    
-                    # 2. Evaluate the scalar functions using a fast list comprehension
-                    # This is the fastest way to loop over scalars in standard Python
                     for func in funcs[i]:
-                        partial_list = [p * func(t) for p, t in zip(partial_list, ts)]
-                    
-                    # 3. Convert the completed coefficients to a NumPy array
-                    partial_arr = np.array(partial_list, dtype=np.complex128)
-                    
-                    # Reshape to (n_steps, 1, 1) for broadcasting
-                    partial_reshaped = partial_arr[:, np.newaxis, np.newaxis]
-                    
-                    # 4. NumPy does the heavy matrix math across all time steps in C
-                    out += partial_reshaped * matrices[i]
-                    
+                        try:
+                            # FAST PATH: Assumes func uses np.cos, np.exp, etc.
+                            vals = func(ts) 
+                        except Exception:
+                            # SLOW FALLBACK: If func uses math.cos or if/else statements
+                            vals = np.array([func(t) for t in ts])
+                            
+                        C[i, :] *= vals
+                        
+                # 3. Single BLAS Tensor Contraction
+                # Contracts C (n_terms, n_steps) with matrices (n_terms, dim, dim)
+                # over axis 0 (n_terms). The result is perfectly shaped: (n_steps, dim, dim)
+                out = np.tensordot(C, matrices, axes=([0], [0]))
+                
                 return out
 
             self._compile_cache = evaluated_op
