@@ -20,7 +20,6 @@ from numbers import Real
 from typing import Any, Callable
 
 import numpy as np
-from scipy.integrate import solve_ivp
 
 from qsim.dynamics.generator import Generator, HamiltonianGenerator
 from qsim.ensemble import HilbertSchmidt
@@ -307,92 +306,102 @@ class RK4Propagator(Propagator, StateVisitor):
         self.ts = ts
         self._ts_cache = {}
         self._tol = tol
+        self.solver=rungeKutta
 
     def evolve(
         self, gen: Generator, state: QuantumState, t_final: Real, t0: Real = 0
     ) -> QuantumState:
-        """
-        Evolve a quantum state using fourth-order Runge–Kutta integration.
-                Parameters
-        ----------
-        gen : Generator
-            Infinitesimal generator of the dynamics.
-        state : QuantumState
-            Initial state.
-        t_final : Real
-            Evolution duration.
-        t0 : Real, optional
-            Initial time (default is 0).
-        Returns
-        -------
-        QuantumState
-            The evolved state.
-        """
+        # ... docstrings ...
+        
         if self.ts is None:
             ts = self._getAutoTS(gen)
         else:
             ts = self.ts
 
-        t = t0
-
         state_type = type(state)
-        gen_func = gen.onState(state)
+        gen_func, input_func = gen.onState(state)
         state_array = state.matrix
+        
+        # Calculate number of steps
+        num_steps = int((t_final - t0) / ts)
+        
+        if num_steps == 0:
+            exact_ts = ts  # Fallback to prevent division by zero
+        else:
+            exact_ts = (t_final - t0) / num_steps
+        
+        # 3. Use exact_ts for everything going forward
+        time_grid = t0 + np.arange(2 * num_steps + 1) * (exact_ts / 2.0)
+        
+        # input_func now receives a proper 1D numpy array
+        input_arrays = input_func(time_grid)
 
-        while t < t_final:
-            if t_final - t < ts:
-                timestep = t_final - t
-            else:
-                timestep = ts
+        dim = state_array.shape
+        trajectory = np.empty((num_steps + 1, *dim), dtype=np.complex128)
+        self.solver(gen_func, state_array, t0, t_final, exact_ts, input_arrays, trajectory)
+        
+        if self._callbacks is not None:
+            for i, step_state in enumerate(trajectory): # FIX 4: Rename to avoid shadowing
+                current_time = t0 + i * ts              # FIX 4: Include t0
+                self._callback(state_type(step_state), current_time)
 
-            state_array = rungeKutta(lambda t_n, s: gen_func(s, t_n), t, timestep, state_array)
-            t += timestep
-            self._callback(state_type(state_array), t)
-
-        return state_type(state_array)
+        return state_type(trajectory[-1])
 
     def evolveOperator(
         self, gen: Generator, op: Operator, t_final: Real, t0: Real = 0
     ) -> Operator:
         """
         Evolve a quantum operator using fourth-order Runge–Kutta integration.
-                Parameters
-        ----------
-        gen : Generator
-            Infinitesimal generator of the dynamics.
-        op : Operator
-            Initial state.
-        t_final : Real
-            Evolution duration.
-        t0 : Real, optional
-            Initial time (default is 0).
-        Returns
-        -------
-        Operator
-            The evolved operator at t_final.
+        # ... docstrings ...
         """
         if self.ts is None:
             ts = self._getAutoTS(gen)
         else:
             ts = self.ts
 
-        gen_func = gen.onOperator(op)
+        # IMPORTANT: Ensure gen.onOperator is updated to return BOTH 
+        # gen_func and input_func, exactly like gen.onState does.
+        gen_func, input_func = gen.onOperator(op)
+        
         op_array = op.matrix
 
-        t = t0
+        # 1. Handle time direction robustly (Heisenberg picture usually goes backwards)
+        # This allows t0 > t_final OR t_final > t0 safely.
+        time_diff = t_final - t0
+        direction = 1 if time_diff >= 0 else -1
+        
+        # 2. Calculate integer steps 
+        num_steps = int(round(abs(time_diff) / ts))
+        
+        # 3. Generate the exact time grid, stepping in the correct direction
+        # Shape: (2 * num_steps + 1,) for t, t+dt/2, and t+dt evaluations
+        if num_steps == 0:
+            exact_ts = ts  # Fallback to prevent division by zero
+        else:
+            exact_ts = (t0 - t_final) / num_steps
+        
+        # 3. Use exact_ts for everything going forward
+        time_grid = t0 + direction * np.arange(2 * num_steps + 1) * (exact_ts / 2.0)
+        
+        # 4. Pre-evaluate all time-dependent operator matrices in C
+        input_arrays = input_func(time_grid)
+     
+        # 5. Execute the monolithic C-compiled solver
+        # Note: Your JIT solver must be updated to loop over `num_steps` 
+        # and return the whole trajectory, exactly like the state solver.
+        dim = op_array.shape
+        trajectory = np.empty((num_steps + 1, *dim), dtype=np.complex128)
+        self.solver(
+            gen_func, op_array, t0, t_final, exact_ts, input_arrays, trajectory
+        )
 
-        while t > t_final:
-            if t - t_final < ts:
-                timestep = t - t_final
-            else:
-                timestep = ts
+        # 6. Process callbacks using the exact trajectory times
+        if self._callbacks is not None:
+            for i, step_op in enumerate(trajectory):
+                current_time = t0 + direction * i * ts
+                self._callback(Operator(step_op), current_time)
 
-            ## evaluation time of the function is inverted to facilitate backwards evolution while letting timestep be positive
-            op_array = rungeKutta(lambda t_n, s: gen_func(s, t - t_n), 0, timestep, op_array)
-            t -= timestep
-            self._callback(Operator(op_array), t)
-
-        return Operator(op_array)
+        return Operator(trajectory[-1])
 
     def _getAutoTS(self, gen: Generator) -> float:
         if gen not in self._ts_cache:
@@ -424,147 +433,21 @@ class RK4Propagator(Propagator, StateVisitor):
         state = HilbertSchmidt.generateDM(gen.dim, rng=np.random.default_rng(seed=42))
 
         state_type = type(state)
-        gen_func = gen.onState(state)
+        gen_func, input_func = gen.onState(state)
         state_array = state.matrix
+        
+        # Calculate number of steps
+        num_steps = int((t_final) / ts)
+        
+        # FIX 1, 2, & 3: Use NumPy, include t0, and add +1 for the final k4 step
+        time_grid = 0 + np.arange(2 * num_steps + 1) * (ts / 2.0)
+        
+        # input_func now receives a proper 1D numpy array
+        input_arrays = input_func(time_grid)
 
-        t = 0
+        dim = state_array.shape
+        trajectory = np.empty((num_steps + 1, *dim), dtype=np.complex128)
+        self.solver(gen_func, state_array, 0, t_final, ts, input_arrays, trajectory)
+        
+        return state_type(trajectory[-1])
 
-        while t < t_final:
-            if t_final - t < ts:
-                timestep = t_final - t
-            else:
-                timestep = ts
-
-            state_array = rungeKutta(lambda t_n, s: gen_func(s, t_n), t, timestep, state_array)
-            t += timestep
-
-        return state_type(state_array)
-
-
-class IVPPropagator(Propagator, StateVisitor):
-    """
-    Adaptive Runge–Kutta propagator.
-
-    This propagator numerically integrates a general time-dependent
-    generator using the classical RK45 scheme.
-
-    Suitable for:
-    - Time-dependent Hamiltonians
-    - GKSL master equations
-    - General non-unitary dynamics
-    """
-
-    def __init__(
-        self,
-        ts: Real | None = None,
-        callbacks: list[Callable] = None,
-        verbose: int = 0,
-        solver: str = "RK45",
-        atol: float = 1e-10,
-        rtol: float = 1e-8,
-    ):
-        super().__init__(callbacks=callbacks, verbose=verbose)
-        self.ts = ts
-        self.solver = solver
-        self.atol = atol
-        self.rtol = rtol
-
-    def evolve(
-        self, gen: Generator, state: QuantumState, t_final: Real, t0: Real = 0
-    ) -> QuantumState:
-        """
-        Evolve a quantum state using fourth-order Runge–Kutta integration.
-                Parameters
-        ----------
-        gen : Generator
-            Infinitesimal generator of the dynamics.
-        state : QuantumState
-            Initial state.
-        t_final : Real
-            Evolution duration.
-        t0 : Real, optional
-            Initial time (default is 0).
-        Returns
-        -------
-        QuantumState
-            The evolved state.
-        """
-        if self.ts is None:
-            ts = np.abs(t_final - t0)
-        else:
-            ts = self.ts
-        t = t0
-
-        def func(t, y):
-            rho = DensityMatrix(y.reshape((gen.dim, gen.dim)))
-            drho = gen.onState(rho, t)  # or gen(t, rho), depending on your API
-            return drho.matrix.reshape(-1)
-
-        while t < t_final:
-            y0 = state.matrix.reshape(-1)
-            sol = solve_ivp(
-                func,
-                t_span=(t, t + ts),
-                y0=y0,
-                method=self.solver,
-                atol=self.atol,
-                rtol=self.rtol,
-            )
-            state = DensityMatrix(sol.y[:, -1].reshape((gen.dim, gen.dim)))
-
-            t += ts
-            self._callback(state, t)
-
-        return state
-
-    def evolveOperator(
-        self, gen: Generator, op: Operator, t_final: Real, t0: Real = 0
-    ) -> Operator:
-        """
-        Evolve a quantum operator using fourth-order Runge–Kutta integration.
-                Parameters
-        ----------
-        gen : Generator
-            Infinitesimal generator of the dynamics.
-        op : Operator
-            Initial state.
-        t_final : Real
-            Evolution duration.
-        t0 : Real, optional
-            Initial time (default is 0).
-        Returns
-        -------
-        Operator
-            The evolved operator at t_final.
-        """
-
-        if self.ts is None:
-            ts = np.abs(t_final - t0)
-        else:
-            ts = self.ts
-
-        t = t0
-
-        def func(t, y):
-            op = Operator(y.reshape((gen.dim, gen.dim)))
-            dop = gen.onOperator(op, t)  # or gen(t, rho), depending on your API
-            return dop.matrix.reshape(-1)
-
-        while t > t_final:
-            op = Operator(
-                solve_ivp(
-                    func,
-                    t_span=(t, t - ts),
-                    y0=op.matrix.reshape(-1),
-                    method=self.solver,
-                    atol=self.atol,
-                    rtol=self.rtol,
-                )
-                .y[:, -1]
-                .reshape((gen.dim, gen.dim))
-            )
-
-            t -= ts
-            self._callback(op, t)
-
-        return op

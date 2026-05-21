@@ -3,7 +3,6 @@ from __future__ import annotations
 from numbers import Number, Real
 from typing import Any, Protocol, Self
 
-import numba as nb
 import numpy as np
 
 
@@ -37,7 +36,7 @@ class OperatorLike(Protocol):
 class Operator(OperatorLike):
 
     def __init__(self, matrix: np.ndarray):
-        self.matrix = matrix.astype(np.complex128)
+        self.matrix = np.asarray(matrix, dtype=np.complex128)
         self._eigvals = None
         self._eigvecs = None
 
@@ -276,7 +275,16 @@ class Operator(OperatorLike):
 
     def compile(self):
         mat = self.matrix
-        return nb.njit(lambda t, m=mat: m)
+        def compiled_func(ts):
+            n_steps = len(ts)
+            # 1. Allocate the 3D array in C
+            out = np.empty((n_steps, mat.shape[0], mat.shape[1]), dtype=mat.dtype)
+            
+            # 2. NumPy automatically broadcasts the 2D matrix across all time steps
+            out[:] = mat 
+            
+            return out
+        return compiled_func
 
 class TestOperator(Operator):
 
@@ -299,11 +307,11 @@ class TestOperator(Operator):
         self._matrix = matrix
 
 
-sigmaX = Operator(np.array([[0, 1], [1, 0]]))
-sigmaY = Operator(np.array([[0, -1j], [1j, 0]]))
-sigmaZ = Operator(np.array([[1, 0], [0, -1]]))
-sigmaMinus = Operator(np.array([[0, 1], [0, 0]]))
-sigmaPlus = Operator(np.array([[0, 0], [1, 0]]))
+sigmaX = Operator(np.array([[0, 1], [1, 0]], dtype=np.complex128))
+sigmaY = Operator(np.array([[0, -1j], [1j, 0]], dtype=np.complex128))
+sigmaZ = Operator(np.array([[1, 0], [0, -1]], dtype=np.complex128))
+sigmaMinus = Operator(np.array([[0, 1], [0, 0]], dtype=np.complex128))
+sigmaPlus = Operator(np.array([[0, 0], [1, 0]], dtype=np.complex128))
 
 
 def I(d: int) -> Operator:

@@ -15,7 +15,7 @@ zObservable = Observable(sigmaZ.matrix)
 generator = GKSLGenerator(H=sigmaX, jumps=[sigmaPlus])
 unitary_dynamic = GKSLGenerator(H=sigmaX, jumps=[])
 
-propagator = RK4Propagator(tol=10e-12)
+propagator = RK4Propagator(tol=10e-12, ts=0.001)
 
 
 def test_evolve_dm():
@@ -30,7 +30,7 @@ def test_evolve_observable():
             propagator.evolveOperator(
                 unitary_dynamic, zObservable, t_final=0, t0=PI / 2
             ).matrix,
-            abs=10e-10,
+            abs=10e-12,
         )
         == -zObservable.matrix
     )

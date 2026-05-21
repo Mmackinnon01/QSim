@@ -26,13 +26,19 @@ unitary_dynamic = GKSLGenerator(H=sigmaX, jumps=[])
 
 
 def test_derivative_dm():
-    assert pytest.approx(dynamic.onState(spin_down)(spin_down.matrix)) == np.array(
+    deriv, inputs = dynamic.onState(spin_down)
+    out = np.zeros((2,2), dtype=np.complex128)
+    deriv(spin_down.matrix, inputs([0])[0], out)
+    assert pytest.approx(out) == np.array(
         [[-1, 1j], [-1j, 1]]
     )
 
 
 def test_derivative_observable():
-    assert pytest.approx(dynamic.onOperator(zObservable)(zObservable.matrix)) == np.array(
+    deriv, inputs = dynamic.onOperator(zObservable)
+    out = np.zeros((2,2), dtype=np.complex128)
+    deriv(zObservable.matrix, inputs([0])[0], out)
+    assert pytest.approx(out) == np.array(
         [[-2, -2j], [2j, 0]]
     )
 
@@ -95,8 +101,11 @@ def test_derivative(composite, manual_composite_H):
             for jump in [jump1, jump2]
         ]
     )
+    deriv, inputs = composite.onState(dual_spin_down)
+    out = np.zeros((4,4), dtype=np.complex128)
+    deriv(dual_spin_down.matrix, inputs([0])[0], out)
     assert (
-        pytest.approx(composite.onState(dual_spin_down)(dual_spin_down.matrix), abs=10**-10)
+        pytest.approx(out, abs=10**-10)
         == expected_unitary + expected_dissipative
     )
 
@@ -113,8 +122,11 @@ def test_observable_derivative(composite, manual_composite_H):
             for jump in [jump1, jump2]
         ]
     )
+    deriv, inputs = composite.onOperator(sigmaZ.tensor(sigmaZ))
+    out = np.zeros((4,4), dtype=np.complex128)
+    deriv(sigmaZ.tensor(sigmaZ).matrix, inputs([0])[0], out)
     assert (
-        pytest.approx(composite.onOperator(sigmaZ.tensor(sigmaZ))(sigmaZ.tensor(sigmaZ).matrix))
+        pytest.approx(out, abs=10**-10)
         == expected_unitary + expected_dissipative
     )
 
@@ -137,25 +149,33 @@ PI = math.pi
 
 
 def test_generator_density_matrix():
-    H = xSpinDynamics.onState(spinUpDensityMatrix)(spinUpDensityMatrix.matrix)
+    deriv, inputs = xSpinDynamics.onState(spinUpDensityMatrix)
+    out = np.zeros((2,2), dtype=np.complex128)
+    deriv(spinUpDensityMatrix.matrix, inputs([0])[0], out)
     assert (
-        pytest.approx(H) == -1j * sigmaX.commutator(spinUpDensityMatrix).matrix
+        pytest.approx(out) == -1j * sigmaX.commutator(spinUpDensityMatrix).matrix
     )
 
 
 def test_generator_ket():
-    H = xSpinDynamics.onState(spinUpKet)(spinUpKet.matrix)
-    assert pytest.approx(H) == -1j * (sigmaX @ spinUpKet).matrix
+    deriv, inputs = xSpinDynamics.onState(spinUpKet)
+    out = np.zeros((2,1), dtype=np.complex128)
+    deriv(spinUpKet.matrix, inputs([0])[0], out)
+    assert pytest.approx(out) == -1j * (sigmaX @ spinUpKet).matrix
 
 
 def test_generator_bra():
-    H = xSpinDynamics.onState(spinUpBra)(spinUpBra.matrix)
-    assert pytest.approx(H) == 1j * (spinUpBra @ sigmaX.hConj()).matrix
+    deriv, inputs = xSpinDynamics.onState(spinUpBra)
+    out = np.zeros((1,2), dtype=np.complex128)
+    deriv(spinUpBra.matrix, inputs([0])[0], out)
+    assert pytest.approx(out) == 1j * (spinUpBra @ sigmaX.hConj()).matrix
 
 
 def test_evolve_operator():
-    H = xSpinDynamics.onOperator(zObservable)(zObservable.matrix)
-    assert pytest.approx(H) == 1j * sigmaX.commutator(zObservable).matrix
+    deriv, inputs = xSpinDynamics.onOperator(zObservable)
+    out = np.zeros((2,2), dtype=np.complex128)
+    deriv(zObservable.matrix, inputs([0])[0], out)
+    assert pytest.approx(out) == 1j * sigmaX.commutator(zObservable).matrix
 
 
 single_qubit_x_hamiltonian = HamiltonianGenerator(H=sigmaX)
@@ -209,9 +229,11 @@ def test_add_dynamics(composite_hamiltonian):
 
 
 def test_generator_separable_dynamics_ket(simple_composite_hamiltonian):
-    g = simple_composite_hamiltonian.onState(bell_state_ket)(bell_state_ket.matrix)
+    deriv, inputs = simple_composite_hamiltonian.onState(bell_state_ket)
+    out = np.zeros((4,1), dtype=np.complex128)
+    deriv(bell_state_ket.matrix, inputs([0])[0], out)
     assert (
-        pytest.approx(g)
+        pytest.approx(out)
         == -1j
         * (np.kron(np.eye(2), sigmaY.matrix) + np.kron(sigmaX.matrix, np.eye(2)))
         @ bell_state_ket.matrix
@@ -219,17 +241,21 @@ def test_generator_separable_dynamics_ket(simple_composite_hamiltonian):
 
 
 def test_evolve_density_matrix(composite_hamiltonian, manual_composite_H):
-    evolved_state = composite_hamiltonian.onState(bell_state_dm)(bell_state_dm.matrix)
-    assert pytest.approx(evolved_state) == -1j * (
+    deriv, inputs = composite_hamiltonian.onState(bell_state_dm)
+    out = np.zeros((4,4), dtype=np.complex128)
+    deriv(bell_state_dm.matrix, inputs([0])[0], out)
+    assert pytest.approx(out) == -1j * (
         manual_composite_H @ bell_state_dm.state
         - bell_state_dm.state @ manual_composite_H
     )
 
 
 def test_evolve_ket(composite_hamiltonian, manual_composite_H):
-    evolved_state = composite_hamiltonian.onState(bell_state_ket)(bell_state_ket.matrix)
+    deriv, inputs = composite_hamiltonian.onState(bell_state_ket)
+    out = np.zeros((4,1), dtype=np.complex128)
+    deriv(bell_state_ket.matrix, inputs([0])[0], out)
     assert (
-        pytest.approx(evolved_state)
+        pytest.approx(out)
         == -1j * manual_composite_H @ bell_state_ket.state
     )
 
@@ -241,9 +267,12 @@ def time_dependent_hamiltonian_generator():
 
 def test_time_dependent_dynamics(time_dependent_hamiltonian_generator):
     H = sigmaX + np.sin(3) * sigmaY
+    deriv, inputs = time_dependent_hamiltonian_generator.onState(spinUpDensityMatrix)
+    out = np.zeros((2,2), dtype=np.complex128)
+    deriv(spinUpDensityMatrix.matrix, inputs([3])[0], out)
     assert (
         pytest.approx(
-            time_dependent_hamiltonian_generator.onState(spinUpDensityMatrix)(spinUpDensityMatrix.matrix, 3)
+            out
         )
         == -1j * H.commutator(spinUpDensityMatrix).state
     )

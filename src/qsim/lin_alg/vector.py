@@ -14,9 +14,9 @@ class Vector:
             if len(matrix.shape) == 2 and (
                 matrix.shape[0] == 1 or matrix.shape[1] == 1
             ):
-                self.matrix = matrix
+                self.matrix = matrix.astype(np.complex128)
             else:
-                self.matrix = matrix.reshape(-1, 1)
+                self.matrix = matrix.reshape(-1, 1).astype(np.complex128)
         else:
             raise TypeError(f"Cannot assign object of type {type(matrix)} to Vector")
 

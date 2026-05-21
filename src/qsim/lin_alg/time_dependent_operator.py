@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import bisect
+
+# Tell Python to ignore this specific Numba warning
+import warnings
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from functools import reduce
 from numbers import Number, Real
 from typing import Any, Callable, Iterator
 
-import numba as nb
 import numpy as np
+from numba.core.errors import NumbaExperimentalFeatureWarning
+
+warnings.filterwarnings("ignore", category=NumbaExperimentalFeatureWarning)
 
 from .operator import Operator, OperatorLike
 
@@ -52,6 +57,7 @@ class TOperator(OperatorLike):
     def __init__(
         self, terms: list[tuple[Callable[[Real], Number] | FunctionList, OperatorLike]]
     ) -> None:
+        self._compile_cache = None
         if len(terms) == 0:
             raise ValueError("TOperator can't be instantiated with an empty terms list")
         self._terms = []
@@ -234,49 +240,43 @@ class TOperator(OperatorLike):
             [(fs, op.partialTrace(dims, reduce_to_sites)) for fs, op in self._terms]
         )
 
-
-    def compile(self) -> Callable[[float], np.ndarray]:
-        # 1. EXTRACT DATA OUTSIDE OF NUMBA
-        # Pull the static data out of 'self' so Numba doesn't have to look at objects
-        dim = self.dim
-        # Create a 3D NumPy array of all the matrices: shape (num_terms, dim, dim)
-        matrices = np.array([op.matrix for funcs, op in self._terms], dtype=np.complex128)
-        
-        num_terms = len(self._terms)
-
-        # 2. THE PURE NUMBA BACKEND (Matrix Addition)
-        # This only sees raw arrays and numbers. It runs at C-speed.
-        @nb.njit
-        def sum_matrices(coeffs, mats):
-            total = np.zeros((dim, dim), dtype=mats.dtype)
-            for i in range(len(coeffs)):
-                total += coeffs[i] * mats[i]
-            return total
-
-        # 3. THE HYBRID WRAPPER
-        # This does the nested logic in Python, then hands off the heavy lifting
-        def f(t: float) -> np.ndarray:
-            # Pre-allocate an array for the evaluated scalar of each term
-            coeffs = np.zeros(num_terms, dtype=np.complex128)
+    def compile(self):
+        if self._compile_cache is None:
+            terms = self._terms
+            n_terms = len(terms)
             
-            # Standard Python loop: fast enough for scalars, allows ANY function type
-            for i, (funcs, op) in enumerate(self._terms):
-                partial = 1.0 + 0.0j
-                for func in funcs.funcs: # Assuming funcs is your FunctionList dataclass
-                    # Evaluate the raw function
-                    val = func.f(t)
-                    # Apply conjugation if the flag is True
-                    if func.is_conjugated:
-                        val = np.conjugate(val)
-                    partial *= val
-                    
-                coeffs[i] = partial
+            # Stack matrices: shape (n_terms, dim, dim)
+            matrices = np.stack([term[1].matrix for term in terms], axis=0)
+            funcs = [[func.f for func in term[0]] for term in terms]
+
+            def evaluated_op(ts):
+                n_steps = len(ts)
+                dim = matrices.shape[1]
+                out = np.zeros((n_steps, dim, dim), dtype=np.complex128)
                 
-            # Drop down to the Numba machine-code layer to do the NxN matrix math
-            return sum_matrices(coeffs, matrices)
+                for i in range(n_terms):
+                    # 1. Start with a list of 1.0s for the coefficients
+                    partial_list = [1.0 + 0.0j] * n_steps
+                    
+                    # 2. Evaluate the scalar functions using a fast list comprehension
+                    # This is the fastest way to loop over scalars in standard Python
+                    for func in funcs[i]:
+                        partial_list = [p * func(t) for p, t in zip(partial_list, ts)]
+                    
+                    # 3. Convert the completed coefficients to a NumPy array
+                    partial_arr = np.array(partial_list, dtype=np.complex128)
+                    
+                    # Reshape to (n_steps, 1, 1) for broadcasting
+                    partial_reshaped = partial_arr[:, np.newaxis, np.newaxis]
+                    
+                    # 4. NumPy does the heavy matrix math across all time steps in C
+                    out += partial_reshaped * matrices[i]
+                    
+                return out
 
-        return f
-
+            self._compile_cache = evaluated_op
+            
+        return self._compile_cache
 
 class DiscreteTOperator(OperatorLike):
 
@@ -449,3 +449,9 @@ def doesCallableReturnNumber(c: Callable):
     except Exception:
         pass
     return False
+
+def _wrap_ufunc(ufunc):
+    """Creates a pure Python closure around a C-ufunc so Numba can read its bytecode."""
+    def wrapper(t):
+        return ufunc(t)
+    return wrapper

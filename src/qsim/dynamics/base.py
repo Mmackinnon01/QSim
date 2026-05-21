@@ -12,7 +12,6 @@ The separation between generator and propagator allows:
 - Application to both quantum states and operators.
 """
 
-from ast import Call
 from numbers import Real
 from typing import Any, Callable, Iterable
 

@@ -8,7 +8,7 @@ from typing import Self
 import matplotlib.pyplot as plt
 import numba as nb
 import numpy as np
-from scipy.linalg import eig, expm
+from scipy.linalg import eig, expm, inv, svd
 
 from qsim.lin_alg import I, Operator, Vector
 from qsim.lin_alg.operator import OperatorLike
@@ -16,32 +16,44 @@ from qsim.lin_alg.transforms import unvectorise, vectorise
 from qsim.state import Bra, DensityMatrix, Ket, QuantumState, StateVisitor
 
 
-@nb.njit
-def _fast_lindblad_heisenberg(op_arr: np.ndarray, H_arr: np.ndarray, jumps_arr: np.ndarray) -> np.ndarray:
-    out = 1j * (H_arr @ op_arr - op_arr @ H_arr)  # +1j
+@nb.njit(fastmath=True)
+def _fast_lindblad_heisenberg(target_arr: np.ndarray, op_arr: np.ndarray, out: np.ndarray):
+    H_arr = op_arr[0]
+    jumps_arr = op_arr[1:]
+    
+    # 1. Overwrite the pre-allocated 'out' array instead of creating a new one
+    out[:] = 1j * (H_arr @ target_arr - target_arr @ H_arr)
+    
     for i in range(len(jumps_arr)):
         L = jumps_arr[i]
         L_dag = L.conj().T
         L_dag_L = L_dag @ L
         
-        # L_dag @ A @ L
-        out += (L_dag @ op_arr @ L) - 0.5 * (L_dag_L @ op_arr + op_arr @ L_dag_L)
-    return out
+        # 2. Add to 'out' in-place
+        out += (L_dag @ target_arr @ L) - 0.5 * (L_dag_L @ target_arr + target_arr @ L_dag_L)
 
-@nb.njit
-def _fast_lindblad_schrodinger(rho_arr: np.ndarray, H_arr: np.ndarray, jumps_arr: np.ndarray) -> np.ndarray:
-    out = -1j * (H_arr @ rho_arr - rho_arr @ H_arr) # -1j
+@nb.njit(fastmath=True)
+def _fast_lindblad_schrodinger(rho_arr: np.ndarray, op_arr: np.ndarray, out: np.ndarray):
+    H_arr = op_arr[0]
+    jumps_arr = op_arr[1:]
+    
+    # 1. Overwrite the pre-allocated 'out' array
+    out[:] = -1j * (H_arr @ rho_arr - rho_arr @ H_arr)
+    
     for i in range(len(jumps_arr)):
         L = jumps_arr[i]
         L_dag = L.conj().T
         L_dag_L = L_dag @ L
         
-        # L @ rho @ L_dag
+        # 2. Add to 'out' in-place
         out += (L @ rho_arr @ L_dag) - 0.5 * (L_dag_L @ rho_arr + rho_arr @ L_dag_L)
-    return out
+
 
 
 class Generator(ABC, StateVisitor):
+
+    def __init__(self):
+        self._compiled_fns = {}
 
     @abstractmethod
     def __add__(self, generator: Self) -> Self: ...
@@ -78,6 +90,7 @@ class GKSLGenerator(Generator):
     def __init__(
         self, H: OperatorLike, jumps: list[OperatorLike] | None = None
     ) -> None:
+        super().__init__()
         if jumps:
             self.jumps = jumps
             self.anticommutator_components = [
@@ -122,36 +135,24 @@ class GKSLGenerator(Generator):
 
 
     def _build_generator(self, is_density_matrix: bool):
-        """Shared setup logic to avoid code duplication."""
-        get_H = self.H.compile()
-        get_jumps = [jump.compile() for jump in self.jumps]
-        
-        # Pick the correct machine-code backend just ONCE during setup
         backend = _fast_lindblad_schrodinger if is_density_matrix else _fast_lindblad_heisenberg
+        H_t = self.H.compile()
+        jumps = [jump.compile() for jump in self.jumps]
 
-        def generator(arr: np.ndarray, t: float = 0.0) -> np.ndarray:
-            # Bulletproof type checking (fixes the BLAS integer crash)
-            if arr.dtype != np.complex128:
-                arr = arr.astype(np.complex128)
-                
-            H_t = get_H(t)
+        def inputs_func(ts):
+            return np.stack([H_t(ts)] + [jump(ts) for jump in jumps], axis=1)
             
-            if len(get_jumps) > 0:
-                jumps_t = np.array([j(t) for j in get_jumps], dtype=np.complex128)
-            else:
-                jumps_t = np.zeros((0, H_t.shape[0], H_t.shape[1]), dtype=np.complex128)
-                
-            # Call whichever backend was selected during setup
-            return backend(arr, H_t, jumps_t)
-            
-        return generator
-
+        return backend, inputs_func
 
     def onOperator(self, op) -> callable:
-        return self._build_generator(is_density_matrix=False)
+        if 'op' not in self._compiled_fns.keys():
+            self._compiled_fns['op'] = self._build_generator(is_density_matrix=False)
+        return self._compiled_fns['op']
 
     def visitDensityMatrix(self, rho) -> callable:
-        return self._build_generator(is_density_matrix=True)
+        if 'dm' not in self._compiled_fns.keys():
+            self._compiled_fns['dm'] = self._build_generator(is_density_matrix=True)
+        return self._compiled_fns['dm']
 
     def visitBra(self, psi: Bra) -> TypeError:
         raise TypeError("GKSL master equation not valid for wavevector input")
@@ -165,11 +166,12 @@ class GKSLGenerator(Generator):
         hconj_jumps = [jump.hConj() for jump in jumps]
         anticommutator_components = [c(t) for c in self.anticommutator_components]
         return H, jumps, hconj_jumps, anticommutator_components
-
+    
 
 class HamiltonianGenerator(Generator):
 
     def __init__(self, H: OperatorLike) -> None:
+        super().__init__()
         self.H = H
         self._unitary_cache = {}
 
@@ -188,35 +190,55 @@ class HamiltonianGenerator(Generator):
         return self.H.dim
 
     def visitBra(self, psi: Bra) -> Bra:
-        H_t = self.H.compile()
+        if 'bra' not in self._compiled_fns.keys():
+            H_t = self.H.compile()
+            def inputs_func(ts):
+                return H_t(ts)
 
-        def f(psi: np.ndarray, t: float = 0)->np.ndarray:
-            return 1j * psi @ H_t(t)
-        return f
+            @nb.njit
+            def f(psi_arr: np.ndarray, op_arr: np.ndarray, out: np.ndarray)->np.ndarray:
+                out[:] = 1j * psi_arr @ op_arr
 
+            self._compiled_fns['bra'] = (f, inputs_func)
+        return self._compiled_fns['bra']
 
     def visitKet(self, psi: Ket) -> Ket:
-        H_t = self.H.compile()
+        if 'ket' not in self._compiled_fns.keys():
+            H_t = self.H.compile()
+            def inputs_func(ts):
+                return H_t(ts)
 
-        def f(psi: np.ndarray, t: float = 0)->np.ndarray:
-            return -1j * H_t(t) @ psi
-        return f
+            @nb.njit
+            def f(psi_arr: np.ndarray, op_arr: np.ndarray, out: np.ndarray)->np.ndarray:
+                out[:] = -1j * op_arr @ psi_arr
+
+            self._compiled_fns['ket'] =  (f, inputs_func)
+        return self._compiled_fns['ket']
 
     def visitDensityMatrix(self, rho: DensityMatrix) -> DensityMatrix:
-        H_t = self.H.compile()
+        if 'dm' not in self._compiled_fns.keys():
+            H_t = self.H.compile()
+            def inputs_func(ts):
+                return H_t(ts)
 
-        def f(rho: np.ndarray, t: float = 0)->np.ndarray:
-            H_eval = H_t(t)
-            return -1j * (H_eval @ rho - rho @ H_eval)
-        return f
+            @nb.njit
+            def f(psi_arr: np.ndarray, op_arr: np.ndarray, out: np.ndarray)->np.ndarray:
+                out[:] = -1j * (op_arr @ psi_arr - psi_arr @ op_arr)
+
+            self._compiled_fns['dm'] = (f, inputs_func)
+        return self._compiled_fns['dm']
 
     def onOperator(self, op: Operator) -> Operator:
-        H_t = self.H.compile()
+        if 'op' not in self._compiled_fns.keys():
+            H_t = self.H.compile()
+            def inputs_func(ts):
+                return H_t(ts)
 
-        def f(op: np.ndarray, t: float = 0)->np.ndarray:
-            H_eval = H_t(t)
-            return 1j * (H_eval @ op - op @ H_eval)
-        return f
+            @nb.njit
+            def f(psi_arr: np.ndarray, op_arr: np.ndarray, out: np.ndarray)->np.ndarray:
+                out[:] = 1j * (op_arr @ psi_arr - psi_arr @ op_arr)
+            self._compiled_fns['op'] = (f, inputs_func)
+        return self._compiled_fns['op']
 
     def changeHilbertSpace(
         self,
@@ -243,6 +265,7 @@ class HamiltonianGenerator(Generator):
 class LiouvillianGenerator(Generator):
 
     def __init__(self, L: OperatorLike) -> None:
+        super().__init__()
         self.L = L
         self._exponential_cache = {}
         self._spectral_cache = {}
@@ -286,11 +309,17 @@ class LiouvillianGenerator(Generator):
         raise TypeError("Superoperator generator does not work on Bra")
 
     def visitKet(self, psi: Ket) -> Ket:
-        L_t = self.L.compile()
+        if 'ket' not in self._compiled_fns.keys():
+            L_t = self.L.compile()
+            def inputs_func(ts):
+                return L_t(ts)
 
-        def f(psi: np.ndarray, t: float = 0)->np.ndarray:
-            return L_t(t) @ psi
-        return f
+            @nb.njit
+            def f(psi_arr: np.ndarray, op_arr: np.ndarray, out: np.ndarray)->np.ndarray:
+                out[:] = op_arr @ psi_arr
+
+            self._compiled_fns['ket'] =  (f, inputs_func)
+        return self._compiled_fns['ket']
 
     def visitDensityMatrix(self, rho: DensityMatrix) -> DensityMatrix:
         raise TypeError("Superoperator generator does not work on Density Matrices")
@@ -335,6 +364,60 @@ class LiouvillianGenerator(Generator):
             self._spectral_cache[t] = (eigs, lv, rv)
         return self._spectral_cache[t]
 
+    def steadyState(self, t: Real = 0, rho0: DensityMatrix | None = None):
+        # 1. Check cache for the left and right biorthonormal bases
+        if t not in self._spectral_cache:
+            L_mat = self.L(t).matrix
+            
+            # SVD is highly optimized and much faster than eig
+            U, s, Vh = svd(L_mat)
+            
+            # Find the indices of the zero singular values (the steady states)
+            tol = 10e-12
+            null_idx = np.where(s < tol)[0]
+            
+            if len(null_idx) == 0:
+                raise ValueError("No steady state found; Liouvillian is non-singular.")
+
+            # 2. Extract Null Spaces
+            # Right null vectors (columns of V)
+            R = Vh[null_idx, :].conj().T
+            
+            # Left null vectors (columns of U)
+            L_left = U[:, null_idx]
+            
+            # 3. Fast Biorthonormalization using pure linear algebra
+            # We need L_left^H @ R = Identity. 
+            M = L_left.conj().T @ R
+            L_biorth = L_left @ inv(M.conj().T)
+            
+            # Cache the bases, not the final state, because the final state depends on rho0
+            self._spectral_cache[t] = (R, L_biorth)
+            
+        # Retrieve the bases from cache
+        # Retrieve the bases from cache
+        R, L_biorth = self._spectral_cache[t]
+        
+        # 4. Project the initial state
+        # Extract the raw NumPy array from your custom Vector object and flatten it to 1D
+        rho0_vec = vectorise(rho0).matrix.flatten()
+        
+        # Now NumPy can execute the fast C-level matrix-vector product
+        steady_vec = R @ (L_biorth.conj().T @ rho0_vec)
+        
+        # 5. Enforce Trace = 1 to clean up numerical noise
+        # Wrap the raw NumPy array back into your Vector class so unvectorise() recognizes it
+        steady_obj = unvectorise(Vector(steady_vec))
+        
+        # Extract the 2D matrix for the trace calculation
+        state_matrix = steady_obj.matrix
+        
+        trace_val = state_matrix.trace()
+        if abs(trace_val) > 10e-10:
+            state_matrix = state_matrix / trace_val
+            
+        return DensityMatrix(state_matrix)
+
     def plotSpectrum(self, t: Real = 0, ax: plt.axes | None = None) -> plt.axes:
         eigs, lv, rv = self.spectralDecomposition(t)
         if not ax:
@@ -344,16 +427,4 @@ class LiouvillianGenerator(Generator):
         ax.set_ylabel(r"Im$(\lambda_i)$")
         return ax
 
-    def steadyState(self, t: Real = 0, rho0: DensityMatrix | None = None):
-        eigs, lv, rv = self.spectralDecomposition(t, biorthonomalise=True)
 
-        if sum(np.abs(eigs) < 10e-15) > 1:
-            return DensityMatrix(sum(
-                [
-                    l @ vectorise(rho0) * unvectorise(r)
-                    for eig, l, r in zip(eigs, lv, rv)
-                    if np.abs(eig) < 10e-15
-                ]
-            ))
-        else:
-            return DensityMatrix(unvectorise(rv[0]))
