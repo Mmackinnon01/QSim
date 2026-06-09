@@ -338,9 +338,9 @@ class RK4Propagator(Propagator, StateVisitor):
 
         dim = state_array.shape
         trajectory = np.empty((num_steps + 1, *dim), dtype=np.complex128)
-        
-        self.solver(gen_func, state_array, t0, t_final, exact_ts, input_arrays, trajectory)
-        
+
+        self.solver(gen_func, state_array, exact_ts, input_arrays, trajectory)
+
         if self._callbacks is not None:
             for i, step_state in enumerate(trajectory): # FIX 4: Rename to avoid shadowing
                 current_time = t0 + i * ts              # FIX 4: Include t0
@@ -394,7 +394,7 @@ class RK4Propagator(Propagator, StateVisitor):
         dim = op_array.shape
         trajectory = np.empty((num_steps + 1, *dim), dtype=np.complex128)
         self.solver(
-            gen_func, op_array, t0, t_final, exact_ts, input_arrays, trajectory
+            gen_func, op_array, exact_ts, input_arrays, trajectory
         )
 
         # 6. Process callbacks using the exact trajectory times
@@ -449,7 +449,7 @@ class RK4Propagator(Propagator, StateVisitor):
 
         dim = state_array.shape
         trajectory = np.empty((num_steps + 1, *dim), dtype=np.complex128)
-        self.solver(gen_func, state_array, 0, t_final, ts, input_arrays, trajectory)
+        self.solver(gen_func, state_array, ts, input_arrays, trajectory)
         
         return state_type(trajectory[-1])
 

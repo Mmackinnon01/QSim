@@ -369,10 +369,10 @@ class DiscreteTOperator(OperatorLike):
             return DiscreteTOperator(val - self._op, self._intervals)
 
     def __mul__(self, val: Number) -> DiscreteTOperator:
-        return DiscreteTOperator(self._op * val, self.intervals)
+        return DiscreteTOperator(self._op * val, self._intervals)
 
     def __rmul__(self, val: Number) -> DiscreteTOperator:
-        return DiscreteTOperator(val * self._op, self.intervals)
+        return DiscreteTOperator(val * self._op, self._intervals)
 
     def __truediv__(self, val: Number) -> DiscreteTOperator:
         return DiscreteTOperator(self._op / val, self._intervals)

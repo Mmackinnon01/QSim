@@ -277,7 +277,7 @@ class HamiltonianGenerator(Generator):
 
 @nb.njit(fastmath=True)
 def liouvillian_generator(psi_arr: np.ndarray, op_arr: np.ndarray, out: np.ndarray)->np.ndarray:
-    out[:] = op_arr @ psi_arr
+    np.dot(op_arr, psi_arr, out=out)
 
 
 class LiouvillianGenerator(Generator):
